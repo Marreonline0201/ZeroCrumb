@@ -46,12 +46,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signInWithGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' })
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/`,
+      },
+    })
     return { error: error as Error | null }
   }
 
   const signInWithApple = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'apple' })
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'apple',
+      options: {
+        redirectTo: `${window.location.origin}/`,
+      },
+    })
     return { error: error as Error | null }
   }
 
