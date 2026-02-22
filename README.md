@@ -1,4 +1,4 @@
-# ZeroCrust
+# ZeroCrumb
 
 A mobile-first SPA for sustainable food tracking, calorie management, and reducing food waste.
 
@@ -63,4 +63,4 @@ A mobile-first SPA for sustainable food tracking, calorie management, and reduci
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
    - `VITE_LOGMEAL_API_KEY`
-5. In Supabase Auth → URL Configuration, add your Render URL (e.g. `https://zerocrust.onrender.com`) to **Redirect URLs**
+5. In Supabase Auth → URL Configuration, add your Render URL (e.g. `https://zerocrumb.onrender.com`) to **Redirect URLs**

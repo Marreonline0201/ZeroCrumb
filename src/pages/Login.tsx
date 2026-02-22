@@ -53,10 +53,10 @@ export function Login() {
     <div className="min-h-dvh flex flex-col items-center justify-center px-6 py-8 bg-zinc-950">
       <img
         src="/ZeroCrumbWhite.png"
-        alt="ZeroCrust"
+        alt="ZeroCrumb"
         className="h-12 w-auto mb-8"
       />
-      <h1 className="text-2xl font-bold text-center mb-2">Welcome to ZeroCrust</h1>
+      <h1 className="text-2xl font-bold text-center mb-2">Welcome to ZeroCrumb</h1>
       <p className="text-zinc-400 text-center text-sm mb-8 max-w-xs">
         Track food, reduce waste, and build sustainable habits.
       </p>

@@ -1,4 +1,4 @@
-# Supabase Setup for ZeroCrust
+# Supabase Setup for ZeroCrumb
 
 ## 1. Run the migration
 

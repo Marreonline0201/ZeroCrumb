@@ -2,7 +2,7 @@ export function LoadingAnimation() {
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center gap-6 bg-zinc-950 p-6">
       {/* Logo */}
-      <img src="/ZeroCrumbWhite.png" alt="ZeroCrust" className="h-12 w-auto opacity-80" />
+      <img src="/ZeroCrumbWhite.png" alt="ZeroCrumb" className="h-12 w-auto opacity-80" />
 
       {/* Animated elements */}
       <div className="flex items-center gap-2">
@@ -22,7 +22,7 @@ export function LoadingAnimation() {
       {/* Loading text with fade effect */}
       <div className="text-center">
         <p className="text-zinc-400 text-sm animate-pulse">Preparing your sustainable journey...</p>
-        <p className="text-zinc-500 text-xs mt-1 opacity-70">Loading ZeroCrust</p>
+        <p className="text-zinc-500 text-xs mt-1 opacity-70">Loading ZeroCrumb</p>
       </div>
 
       {/* Animated background elements */}

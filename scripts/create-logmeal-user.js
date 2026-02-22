@@ -23,7 +23,7 @@ async function createUser() {
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      username: `zerocrust_${Date.now()}`,
+      username: `zerocrumb_${Date.now()}`,
       language: 'eng',
     }),
   })

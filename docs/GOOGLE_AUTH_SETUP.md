@@ -1,4 +1,4 @@
-# Google Auth Setup for ZeroCrust
+# Google Auth Setup for ZeroCrumb
 
 Your app already has the Google sign-in button wired up. Follow these steps to enable it.
 
@@ -10,7 +10,7 @@ Your app already has the Google sign-in button wired up. Follow these steps to e
 4. Click **Create Credentials** → **OAuth client ID**
 5. If prompted, configure the **OAuth consent screen**:
    - User type: **External** (for any Google user)
-   - App name: **ZeroCrust**
+   - App name: **ZeroCrumb**
    - Add your email as developer
    - Scopes: ensure `userinfo.email`, `userinfo.profile`, and `openid` are included
 6. For **Application type**, choose **Web application**

@@ -1,5 +1,5 @@
 {
-  "name": "zerocrust-fatsecret-proxy",
+  "name": "zerocrumb-fatsecret-proxy",
   "type": "module",
   "scripts": {
     "start": "node index.js"
