@@ -102,9 +102,18 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users for each row execute procedure public.handle_new_user();
 
 -- Posts social features (likes, saves, comments)
+-- Ensure posts table exists and has required columns (run 004_posts_social migration first if posts doesn't exist)
 alter table posts add column if not exists likes int default 0;
 alter table posts add column if not exists image_url_after text;
+alter table posts add column if not exists description text;
 alter table posts add column if not exists analysis_data jsonb;
+
+-- Ensure RLS policies exist for posts (needed for edit to work)
+alter table posts enable row level security;
+drop policy if exists "Anyone can view posts" on posts;
+create policy "Anyone can view posts" on posts for select using (true);
+drop policy if exists "Users can update own posts" on posts;
+create policy "Users can update own posts" on posts for update using (auth.uid() = user_id);
 
 create table if not exists post_likes (
   user_id uuid references auth.users(id) on delete cascade,

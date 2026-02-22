@@ -83,6 +83,7 @@ export function Posts() {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [editingPostId, setEditingPostId] = useState<string | null>(null)
   const [editCaption, setEditCaption] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
   const [commentsOpenId, setCommentsOpenId] = useState<string | null>(null)
   const [comments, setComments] = useState<Record<string, CommentWithAuthor[]>>({})
   const [commentText, setCommentText] = useState<Record<string, string>>({})
@@ -156,13 +157,14 @@ export function Posts() {
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      if (!menuOpenId) return
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpenId(null)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+  }, [menuOpenId])
 
   useEffect(() => {
     if (!commentsOpenId) return
@@ -213,6 +215,7 @@ export function Posts() {
 
   const handleEditClick = (post: Post & { user_id: string }) => {
     setMenuOpenId(null)
+    setError(null)
     setEditingPostId(post.id)
     setEditCaption(post.caption)
   }
@@ -221,12 +224,16 @@ export function Posts() {
     if (!editingPostId || !currentUser) return
     const post = posts.find((p) => p.id === editingPostId)
     if (!post || post.user_id !== currentUser.id) return
+    setSavingEdit(true)
+    setError(null)
     try {
-      await updatePost(editingPostId, currentUser.id, { description: editCaption })
-      setPosts((prev) => prev.map((p) => (p.id === editingPostId ? { ...p, caption: editCaption } : p)))
+      await updatePost(editingPostId, currentUser.id, { description: editCaption.trim() })
+      setPosts((prev) => prev.map((p) => (p.id === editingPostId ? { ...p, caption: editCaption.trim() } : p)))
       setEditingPostId(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update')
+      setError(err instanceof Error ? err.message : 'Failed to update post')
+    } finally {
+      setSavingEdit(false)
     }
   }
 
@@ -321,7 +328,14 @@ export function Posts() {
                   <p className="text-zinc-500 text-xs">{post.timestamp}</p>
                 </div>
               </div>
-              <div className="relative" ref={currentUser?.id === post.user_id ? menuRef : undefined}>
+              <div
+                className="relative"
+                ref={(el) => {
+                  if (currentUser?.id === post.user_id && menuOpenId === post.id) {
+                    (menuRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+                  }
+                }}
+              >
                 {currentUser?.id === post.user_id ? (
                   <button
                     type="button"
@@ -433,25 +447,28 @@ export function Posts() {
               <div className="space-y-2">
                 <p className="font-semibold text-zinc-100 text-sm">{post.likes} likes</p>
                 {editingPostId === post.id ? (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <textarea
                       value={editCaption}
                       onChange={(e) => setEditCaption(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 text-sm resize-none"
-                      rows={2}
+                      placeholder="Edit your description..."
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-600 text-zinc-100 text-sm resize-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                      rows={4}
+                      autoFocus
                     />
                     <div className="flex gap-2">
                       <button
                         type="button"
                         onClick={handleEditSave}
-                        className="px-3 py-1 rounded-lg bg-emerald-600 text-white text-sm"
+                        disabled={savingEdit}
+                        className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium disabled:opacity-50"
                       >
-                        Save
+                        {savingEdit ? 'Saving...' : 'Finish Editing'}
                       </button>
                       <button
                         type="button"
                         onClick={() => setEditingPostId(null)}
-                        className="px-3 py-1 rounded-lg bg-zinc-700 text-zinc-300 text-sm"
+                        className="px-4 py-2 rounded-lg bg-zinc-700 text-zinc-300 text-sm"
                       >
                         Cancel
                       </button>

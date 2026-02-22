@@ -70,6 +70,16 @@ export async function addComment(postId: string, userId: string, text: string): 
 }
 
 export async function updatePost(postId: string, userId: string, updates: { description?: string; hashtags?: string }): Promise<void> {
-  const { error } = await supabase.from('posts').update(updates).eq('id', postId).eq('user_id', userId)
+  const filtered = Object.fromEntries(Object.entries(updates).filter(([, v]) => v !== undefined))
+  if (Object.keys(filtered).length === 0) return
+  const { data, error } = await supabase
+    .from('posts')
+    .update(filtered)
+    .eq('id', postId)
+    .eq('user_id', userId)
+    .select('id')
   if (error) throw error
+  if (!data || data.length === 0) {
+    throw new Error('Could not update post. You may not have permission to edit it.')
+  }
 }
