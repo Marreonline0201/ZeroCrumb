@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../hooks/useAuth'
 
 interface Post {
   id: string
@@ -41,9 +42,13 @@ const formatTimeAgo = (iso: string) => {
 }
 
 export function Posts() {
-  const [posts, setPosts] = useState<Post[]>([])
+  const { user: currentUser } = useAuth()
+  const [posts, setPosts] = useState<(Post & { user_id: string })[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [postToDelete, setPostToDelete] = useState<{ postId: string; userId: string } | null>(null)
 
   useEffect(() => {
     let isMounted = true
@@ -76,6 +81,7 @@ export function Posts() {
 
         return {
           id: post.id,
+          user_id: post.user_id,
           user: {
             name: `User ${username}`,
             avatar: fallbackAvatar,
@@ -101,6 +107,41 @@ export function Posts() {
     }
   }, [])
 
+  const handleDeleteClick = (postId: string, userId: string) => {
+    if (!currentUser || currentUser.id !== userId) {
+      setError('You can only delete your own posts')
+      return
+    }
+    setPostToDelete({ postId, userId })
+    setShowDeleteConfirm(true)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!postToDelete) return
+
+    const { postId } = postToDelete
+    setDeletingId(postId)
+    setShowDeleteConfirm(false)
+    try {
+      const { error: deleteError } = await supabase.from('posts').delete().eq('id', postId)
+
+      if (deleteError) throw deleteError
+
+      // Remove from UI
+      setPosts(posts.filter((p) => p.id !== postId))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete post')
+    } finally {
+      setDeletingId(null)
+      setPostToDelete(null)
+    }
+  }
+
+  const handleCancelDelete = () => {
+    setShowDeleteConfirm(false)
+    setPostToDelete(null)
+  }
+
   return (
     <div className="max-w-md mx-auto pb-6">
       {loading && (
@@ -120,8 +161,8 @@ export function Posts() {
       )}
       {/* Posts feed */}
       <div className="space-y-6">
-        {posts.map((post) => (
-          <div key={post.id} className="bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800">
+        {posts.map((post, index) => (
+          <div key={post.id} className={`bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800 ${index === 0 ? 'mt-4' : ''}`}>
             {/* Post header */}
             <div className="flex items-center justify-between p-4">
               <div className="flex items-center gap-3">
@@ -135,11 +176,22 @@ export function Posts() {
                   <p className="text-zinc-500 text-xs">{post.timestamp}</p>
                 </div>
               </div>
-              <button className="text-zinc-400 hover:text-zinc-300">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                </svg>
-              </button>
+              {currentUser?.id === post.user_id && (
+                <button
+                  onClick={() => handleDeleteClick(post.id, post.user_id)}
+                  disabled={deletingId === post.id}
+                  className="text-zinc-400 hover:text-red-400 disabled:opacity-50 transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                </button>
+              )}
             </div>
 
             {/* Post image */}
@@ -195,6 +247,30 @@ export function Posts() {
           </div>
         ))}
       </div>
+
+      {/* Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-6 max-w-sm mx-4 shadow-2xl">
+            <h3 className="text-lg font-semibold text-zinc-100 mb-2">Delete Post?</h3>
+            <p className="text-zinc-400 text-sm mb-6">This action cannot be undone. Are you sure you want to delete this post?</p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleCancelDelete}
+                className="flex-1 px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="flex-1 px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white font-medium transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

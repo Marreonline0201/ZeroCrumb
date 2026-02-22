@@ -4,9 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 
 const navLinks = [
   { to: '/', label: 'Home' },
-  { to: '/profile', label: 'Profile' },
-  { to: '/history', label: 'History' },
-  { to: '/upload', label: 'Upload' },
+  { to: '/about', label: 'About Us' },
 ]
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -29,6 +27,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
           {/* Navigation buttons - Center */}
           <div className="flex items-center gap-2">
+            <Link
+              to="/"
+              className="flex flex-col items-center justify-center p-2 rounded-lg hover:bg-zinc-800 transition-colors"
+            >
+              <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center mb-1">
+                <svg className="w-3 h-3 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-3m0 0l7-4 7 4M5 9v10a1 1 0 001 1h12a1 1 0 001-1V9m-9 11l4-4m0 0l4 4m-4-4V3" />
+                </svg>
+              </div>
+              <span className="text-xs text-blue-400 font-medium">Home</span>
+            </Link>
+
             <Link
               to="/history"
               className="flex flex-col items-center justify-center p-2 rounded-lg hover:bg-zinc-800 transition-colors"
