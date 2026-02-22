@@ -66,8 +66,8 @@ function getFoodItemsFromResponse(data: LogMealNutritionResponse): Array<{
 }
 
 export function Upload() {
-  const navigate = useNavigate()
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [mode, setMode] = useState<AnalyzerMode>(null)
   const [file, setFile] = useState<File | null>(null)
   const [fileBefore, setFileBefore] = useState<File | null>(null)
