@@ -5,7 +5,12 @@ import {
   type LogMealNutritionResponse,
   type LogMealNutrient,
 } from '../lib/logmeal'
-import { analyzeFoodWithGemini, getMemeCaptionForGif, type GeminiFoodAnalysis } from '../lib/gemini'
+import {
+  analyzeFoodWithGemini,
+  getMemeCaptionForGif,
+  getDishNameFromItems,
+  type GeminiFoodAnalysis,
+} from '../lib/gemini'
 import { saveCalorieAnalysis, saveBeforeAfterAnalysis } from '../lib/analyses'
 import { updateStatsOnMealLog } from '../lib/stats'
 import { checkAndAwardAchievements } from '../lib/achievements'
@@ -179,13 +184,18 @@ export function Upload() {
           const nutritionalData = data.nutritional_info
             ? { totalNutrients: data.nutritional_info.totalNutrients, detectedItems: foodItems }
             : undefined
+          let title = geminiResult?.caption?.trim()
+          if (!title && foodItems.length > 0 && import.meta.env.VITE_GEMINI_API_KEY) {
+            const uniqueNames = [...new Set(foodItems.map((i) => i.name).filter(Boolean))]
+            title = (await getDishNameFromItems(uniqueNames)) || undefined
+          }
           await saveCalorieAnalysis({
             userId: user.id,
             imageFile: file,
             calories,
             nutritionalData,
             expEarned: XP_PER_ANALYSIS,
-            title: geminiResult?.caption?.trim() || undefined,
+            title: title || undefined,
           })
           const stats = await updateStatsOnMealLog(user.id, {
             type: 'calorie',
@@ -251,9 +261,14 @@ export function Upload() {
           const nutritionalData = before.nutritional_info
             ? { totalNutrients: before.nutritional_info.totalNutrients, detectedItems: foodItems }
             : undefined
-          const beforeTitle = geminiBefore?.caption?.trim()
-          const afterTitle = geminiAfter?.caption?.trim()
-          const combinedTitle = [beforeTitle, afterTitle].filter(Boolean).join(' → ') || undefined
+          let title = geminiBefore?.caption?.trim()
+          if (!title && foodItems.length > 0 && import.meta.env.VITE_GEMINI_API_KEY) {
+            const uniqueNames = [...new Set(foodItems.map((i) => i.name).filter(Boolean))]
+            title = (await getDishNameFromItems(uniqueNames)) || undefined
+          }
+          if (!title && geminiAfter?.caption?.trim()) {
+            title = geminiAfter.caption.trim()
+          }
           await saveBeforeAfterAnalysis({
             userId: user.id,
             imageFileBefore: fileBefore,
@@ -264,7 +279,7 @@ export function Upload() {
             foodWasteCalories: caloriesAfter,
             nutritionalData,
             expEarned: XP_PER_ANALYSIS * 2,
-            title: combinedTitle,
+            title: title || undefined,
           })
           const stats = await updateStatsOnMealLog(user.id, {
             type: 'before_after',

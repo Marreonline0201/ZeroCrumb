@@ -109,14 +109,15 @@ export async function getMemeCaptionForGif(foodName: string, _gifUrl: string): P
 }
 
 /**
- * Use Gemini to turn a list of food items into one concise dish name (e.g. "Monster Energy Zero Sugar" or "Grilled chicken salad")
+ * Use Gemini to turn a list of food items into one concise dish name (e.g. "Yakisoba with rice and chicken")
  */
 export async function getDishNameFromItems(foodNames: string[]): Promise<string> {
   const key = getApiKey()
   if (!key || foodNames.length === 0) return ''
 
   try {
-    const items = foodNames.filter(Boolean).join(', ')
+    const unique = [...new Set(foodNames.filter(Boolean))]
+    const items = unique.join(', ')
     if (!items) return ''
 
     const res = await fetch(`${GEMINI_API}?key=${key}`, {
@@ -125,11 +126,11 @@ export async function getDishNameFromItems(foodNames: string[]): Promise<string>
       body: JSON.stringify({
         contents: [{
           parts: [{
-            text: `Given these detected food/drink items: "${items}". Reply with ONE short dish name (3-6 words) that best describes this meal or item. Examples: "Monster Energy Zero Sugar", "Grilled chicken salad", "Coffee and pastry". Reply with ONLY the dish name, no quotes or punctuation.`
+            text: `Combine these food items into ONE natural dish name: "${items}". Examples: "Yakisoba with rice and chicken", "Grilled chicken salad", "Monster Energy Zero Sugar". Do NOT simply list or repeat the items. Reply with ONLY the dish name (3-8 words), no quotes.`
           }],
         }],
         generationConfig: {
-          temperature: 0.3,
+          temperature: 0.2,
           maxOutputTokens: 64,
         },
       }),

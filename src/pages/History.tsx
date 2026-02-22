@@ -53,29 +53,39 @@ function AnalysisDetail({
   const macros = nutritionalData?.totalNutrients ?? {}
   const detectedItems: DetectedItem[] = nutritionalData?.detectedItems ?? []
 
-  const dishNameFromItems =
-    detectedItems.length > 0
-      ? detectedItems.map((i) => i.name).join(', ')
+  const [captionLoading, setCaptionLoading] = useState(false)
+
+  const uniqueItemNames = [...new Set(detectedItems.map((i) => i.name).filter(Boolean))]
+  const fallbackFromItems =
+    uniqueItemNames.length > 0
+      ? uniqueItemNames.length <= 3
+        ? uniqueItemNames.join(' and ')
+        : `${uniqueItemNames.slice(0, 2).join(', ')} and more`
       : null
 
   const displayTitle =
     analysis.title?.trim() ||
     caption ||
-    dishNameFromItems ||
+    (captionLoading ? 'Loading...' : null) ||
+    fallbackFromItems ||
     (analysis.type === 'before_after' ? 'Before/After' : 'Calorie analysis')
 
   useEffect(() => {
     if (analysis.title?.trim() || !import.meta.env.VITE_GEMINI_API_KEY) return
-    if (detectedItems.length > 0) {
-      getDishNameFromItems(detectedItems.map((i) => i.name))
-        .then((name) => name && setCaption(name))
-        .catch(() => setCaption(null))
-    } else {
-      getFoodImageCaption(analysis.image_url)
-        .then((name) => name && setCaption(name))
-        .catch(() => setCaption(null))
+    setCaptionLoading(true)
+    const fetchTitle = () => {
+      if (uniqueItemNames.length > 0) {
+        return getDishNameFromItems(uniqueItemNames)
+      }
+      return getFoodImageCaption(analysis.image_url)
     }
-  }, [analysis.image_url, analysis.title, detectedItems])
+    fetchTitle()
+      .then((name) => {
+        if (name) setCaption(name)
+      })
+      .catch(() => {})
+      .finally(() => setCaptionLoading(false))
+  }, [analysis.id, analysis.image_url, analysis.title])
 
   const hasDetails = (macros && Object.keys(macros).length > 0) || detectedItems.length > 0
 
@@ -304,10 +314,12 @@ function AnalysisDetail({
           className="w-full aspect-video object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-        <div className="absolute bottom-0 left-0 right-0 p-3 flex items-center justify-between">
-          <div>
-            <p className="font-semibold text-white text-lg">{displayTitle}</p>
-            <p className="text-emerald-400 font-bold">{Math.round(analysis.calories)} cal</p>
+        <div className="absolute bottom-0 left-0 right-0 p-3 flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-white text-lg drop-shadow-lg line-clamp-2" title={displayTitle}>
+              {displayTitle}
+            </p>
+            <p className="text-emerald-400 font-bold drop-shadow-md">{Math.round(analysis.calories)} cal</p>
           </div>
           <div className="flex gap-2">
             <button
