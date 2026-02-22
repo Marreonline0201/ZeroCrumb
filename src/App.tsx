@@ -1,6 +1,10 @@
+import { useState, useEffect, startTransition } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
-import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { AuthProvider } from './contexts/AuthContext'
+import { useAuth } from './hooks/useAuth'
 import { Layout } from './components/Layout'
+import { LoadingAnimation } from './components/LoadingAnimation'
+import { WelcomeScene } from './components/WelcomeScene'
 import { Login } from './pages/Login'
 import { Home } from './pages/Home'
 import { Profile } from './pages/Profile'
@@ -9,21 +13,35 @@ import { Upload } from './pages/Upload'
 
 function ProtectedRoute() {
   const { user, loading } = useAuth()
+  const [showWelcome, setShowWelcome] = useState(false)
+
+  useEffect(() => {
+    if (user && !loading) {
+      // Always show welcome scene for authenticated users
+      startTransition(() => {
+        setShowWelcome(true)
+      })
+    }
+  }, [user, loading])
+
+  const handleWelcomeComplete = () => {
+    setShowWelcome(false)
+  }
+
   if (loading) {
-    return (
-      <div className="min-h-dvh flex flex-col items-center justify-center gap-4 bg-zinc-950 p-6">
-        <img src="/ZeroCrumbWhite.png" alt="ZeroCrust" className="h-10 w-auto opacity-80" />
-        <p className="text-zinc-400 animate-pulse">Loading...</p>
-      </div>
-    )
+    return <LoadingAnimation />
   }
   if (!user) {
     return <Navigate to="/login" replace />
   }
+
   return (
-    <Layout>
-      <Outlet />
-    </Layout>
+    <>
+      {showWelcome && <WelcomeScene onComplete={handleWelcomeComplete} />}
+      <Layout>
+        <Outlet />
+      </Layout>
+    </>
   )
 }
 

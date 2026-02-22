@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { useAuth } from '../contexts/AuthContext'
+import { useState, useRef } from 'react'
+import { useAuth } from '../hooks/useAuth'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
@@ -10,15 +10,8 @@ export function Profile() {
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(false)
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.user_metadata?.avatar_url ?? null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  // Update local state when user data changes
-  useEffect(() => {
-    setDisplayName(user?.user_metadata?.full_name ?? '')
-    setDescription(user?.user_metadata?.description ?? '')
-    setAvatarPreview(user?.user_metadata?.avatar_url ?? null)
-  }, [user])
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
