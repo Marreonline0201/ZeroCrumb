@@ -69,6 +69,57 @@ export async function addComment(postId: string, userId: string, text: string): 
   if (error) throw error
 }
 
+export async function getPostById(
+  postId: string,
+  profiles: Record<string, { full_name: string | null; avatar_url: string | null }>
+): Promise<{
+  id: string
+  user_id: string
+  user: { name: string; avatar: string; username: string }
+  image: string
+  imageAfter?: string
+  caption: string
+  likes: number
+  tags: string[]
+  analysisData?: unknown
+  created_at: string
+} | null> {
+  const { data, error } = await supabase
+    .from('posts')
+    .select('id, user_id, image_url, image_url_after, description, hashtags, created_at, likes, analysis_data')
+    .eq('id', postId)
+    .single()
+  if (error || !data) return null
+  const p = data as {
+    id: string
+    user_id: string
+    image_url: string
+    image_url_after?: string
+    description: string
+    hashtags: string | null
+    created_at: string
+    likes: number | null
+    analysis_data?: unknown
+  }
+  const prof = profiles[p.user_id]
+  const name = prof?.full_name?.trim() || `User ${p.user_id.slice(0, 8)}`
+  const avatar = prof?.avatar_url || FALLBACK_AVATAR
+  const username = name.replace(/\s+/g, '').toLowerCase() || p.user_id.slice(0, 8)
+  const tags = p.hashtags ? p.hashtags.split(' ').map((t) => t.trim()).filter(Boolean) : []
+  return {
+    id: p.id,
+    user_id: p.user_id,
+    user: { name, avatar, username },
+    image: p.image_url,
+    imageAfter: p.image_url_after ?? undefined,
+    caption: p.description ?? '',
+    likes: p.likes ?? 0,
+    tags,
+    analysisData: p.analysis_data,
+    created_at: p.created_at,
+  }
+}
+
 export async function updatePost(postId: string, userId: string, updates: { description?: string; hashtags?: string }): Promise<void> {
   const filtered = Object.fromEntries(Object.entries(updates).filter(([, v]) => v !== undefined))
   if (Object.keys(filtered).length === 0) return

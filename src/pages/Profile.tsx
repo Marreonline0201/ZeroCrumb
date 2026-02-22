@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { upsertProfile } from '../lib/profiles'
 import { getUserStats, levelFromXp } from '../lib/stats'
 import type { UserStats } from '../lib/stats'
+import { PostDetailModal } from '../components/PostDetailModal'
 
 interface Post {
   id: string
@@ -12,6 +13,7 @@ interface Post {
   image_url_after?: string
   description: string
   created_at: string
+  user_id?: string
 }
 
 type ProfileTab = 'posts' | 'saved'
@@ -29,9 +31,7 @@ export function Profile() {
   const [savedPosts, setSavedPosts] = useState<Post[]>([])
   const [loadingPosts, setLoadingPosts] = useState(true)
   const [profileTab, setProfileTab] = useState<ProfileTab>('posts')
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [postToDelete, setPostToDelete] = useState<string | null>(null)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [modalPostId, setModalPostId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -49,7 +49,7 @@ export function Profile() {
     const loadPosts = async () => {
       setLoadingPosts(true)
       const [postsRes, savesRes] = await Promise.all([
-        supabase.from('posts').select('id, image_url, image_url_after, description, created_at').eq('user_id', user.id).order('created_at', { ascending: false }),
+        supabase.from('posts').select('id, image_url, image_url_after, description, created_at, user_id').eq('user_id', user.id).order('created_at', { ascending: false }),
         supabase.from('post_saves').select('post_id').eq('user_id', user.id),
       ])
       if (!postsRes.error && postsRes.data) {
@@ -57,7 +57,7 @@ export function Profile() {
       }
       if (!savesRes.error && savesRes.data?.length) {
         const ids = savesRes.data.map((r) => r.post_id)
-        const { data: saved } = await supabase.from('posts').select('id, image_url, image_url_after, description, created_at').in('id', ids).order('created_at', { ascending: false })
+        const { data: saved } = await supabase.from('posts').select('id, image_url, image_url_after, description, created_at, user_id').in('id', ids).order('created_at', { ascending: false })
         setSavedPosts((saved ?? []) as Post[])
       } else {
         setSavedPosts([])
@@ -146,36 +146,6 @@ export function Profile() {
     setAvatarFile(null) // Clear the file after successful upload
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
-  }
-
-  const handleDeleteClick = (postId: string) => {
-    setPostToDelete(postId)
-    setShowDeleteConfirm(true)
-  }
-
-  const handleConfirmDelete = async () => {
-    if (!postToDelete) return
-
-    setDeletingId(postToDelete)
-    setShowDeleteConfirm(false)
-    try {
-      const { error: deleteError } = await supabase.from('posts').delete().eq('id', postToDelete)
-
-      if (deleteError) throw deleteError
-
-      // Remove from UI
-      setUserPosts(userPosts.filter((p) => p.id !== postToDelete))
-    } catch (err) {
-      console.error('Failed to delete post:', err)
-    } finally {
-      setDeletingId(null)
-      setPostToDelete(null)
-    }
-  }
-
-  const handleCancelDelete = () => {
-    setShowDeleteConfirm(false)
-    setPostToDelete(null)
   }
 
   const formatDate = (iso: string) => {
@@ -306,7 +276,12 @@ export function Profile() {
         ) : (
           <div className="grid grid-cols-3 gap-3">
             {(profileTab === 'posts' ? userPosts : savedPosts).map((post) => (
-              <Link key={post.id} to="/" className="relative group aspect-square rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800 block">
+              <button
+                key={post.id}
+                type="button"
+                onClick={() => setModalPostId(post.id)}
+                className="relative group aspect-square rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800 block w-full text-left"
+              >
                 {post.image_url_after ? (
                   <div className="grid grid-cols-2 w-full h-full">
                     <img src={post.image_url} alt="Before" className="w-full h-full object-cover" />
@@ -315,53 +290,39 @@ export function Profile() {
                 ) : (
                   <img src={post.image_url} alt="Post" className="w-full h-full object-cover" />
                 )}
-                {profileTab === 'posts' && (
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors flex items-center justify-center">
-                    <button
-                      type="button"
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteClick(post.id) }}
-                      disabled={deletingId === post.id}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-300 disabled:opacity-50"
-                    >
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  </div>
-                )}
                 <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <p className="text-xs text-zinc-300 line-clamp-2">{post.description}</p>
                   <p className="text-xs text-zinc-500 mt-1">{formatDate(post.created_at)}</p>
                 </div>
-              </Link>
+              </button>
             ))}
           </div>
         )}
       </div>
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-6 max-w-sm mx-4 shadow-2xl">
-            <h3 className="text-lg font-semibold text-zinc-100 mb-2">Delete Post?</h3>
-            <p className="text-zinc-400 text-sm mb-6">This action cannot be undone. Are you sure you want to delete this post?</p>
-            <div className="flex gap-3">
-              <button
-                onClick={handleCancelDelete}
-                className="flex-1 px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-medium transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmDelete}
-                className="flex-1 px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white font-medium transition-colors"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Post Detail Modal */}
+      {modalPostId && (
+        <PostDetailModal
+          postId={modalPostId}
+          isOwnPost={
+            userPosts.some((p) => p.id === modalPostId) ||
+            (savedPosts.find((p) => p.id === modalPostId)?.user_id === user?.id)
+          }
+          onClose={() => setModalPostId(null)}
+          onDelete={(id) => {
+            setUserPosts((prev) => prev.filter((p) => p.id !== id))
+            setSavedPosts((prev) => prev.filter((p) => p.id !== id))
+            setModalPostId(null)
+          }}
+          onUpdate={(id, updates) => {
+            if (updates.caption != null) {
+              setUserPosts((prev) => prev.map((p) => (p.id === id ? { ...p, description: updates.caption! } : p)))
+              setSavedPosts((prev) => prev.map((p) => (p.id === id ? { ...p, description: updates.caption! } : p)))
+            }
+          }}
+        />
       )}
+
     </div>
   )
 }
