@@ -74,7 +74,7 @@ export function WelcomeScene({ onComplete }: WelcomeSceneProps) {
             <div className="floating-element element-5">🥕</div>
           </div>
         </div>
-        <p className="welcome-instruction">...Loading...</p>
+        <p className="welcome-instruction">... Loading ...</p>
       </div>
     </div>
   )
