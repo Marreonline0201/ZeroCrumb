@@ -35,7 +35,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null)
     })
 
-    return () => subscription.unsubscribe()
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key?.startsWith('sb-') && e.key?.includes('auth')) {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          setUser(session?.user ?? null)
+        })
+      }
+    }
+    window.addEventListener('storage', handleStorageChange)
+
+    return () => {
+      subscription.unsubscribe()
+      window.removeEventListener('storage', handleStorageChange)
+    }
   }, [])
 
   const signInWithEmail = async (email: string, password: string) => {
