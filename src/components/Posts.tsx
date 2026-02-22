@@ -12,6 +12,24 @@ import {
   updatePost,
   type CommentWithAuthor,
 } from '../lib/posts'
+import { SeeMoreText } from './SeeMoreText'
+import { searchGifsMultiple } from '../lib/klipy'
+
+type AnalysisData =
+  | {
+      type: 'calorie'
+      calories?: number
+      macros?: Array<{ label: string; value: string }>
+    }
+  | {
+      type: 'before_after'
+      caloriesBefore?: number
+      caloriesAfter?: number
+      caloriesConsumed?: number
+      foodWasteCalories?: number
+      macrosBefore?: Array<{ label: string; value: string }>
+      macrosAfter?: Array<{ label: string; value: string }>
+    }
 
 interface Post {
   id: string
@@ -23,6 +41,7 @@ interface Post {
   comments: number
   timestamp: string
   tags: string[]
+  analysisData?: AnalysisData | null
 }
 
 interface DbPost {
@@ -34,6 +53,7 @@ interface DbPost {
   hashtags: string | null
   created_at: string
   likes: number | null
+  analysis_data?: AnalysisData | null
 }
 
 const fallbackAvatar = 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face'
@@ -66,6 +86,9 @@ export function Posts() {
   const [commentsOpenId, setCommentsOpenId] = useState<string | null>(null)
   const [comments, setComments] = useState<Record<string, CommentWithAuthor[]>>({})
   const [commentText, setCommentText] = useState<Record<string, string>>({})
+  const [detailOpenId, setDetailOpenId] = useState<string | null>(null)
+  const [sillyTabs, setSillyTabs] = useState<Array<{ id: string; url: string; x: number; y: number }>>([])
+  const [visibleTabsCount, setVisibleTabsCount] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const loadPosts = async () => {
@@ -107,6 +130,7 @@ export function Posts() {
         comments: 0,
         timestamp: formatTimeAgo(post.created_at),
         tags,
+        analysisData: post.analysis_data ?? undefined,
       }
     })
 
@@ -227,6 +251,27 @@ export function Posts() {
     setShowDeleteConfirm(false)
     setPostToDelete(null)
   }
+
+  const handleSillyFace = async (postId: string) => {
+    const queries = ['food fail', 'cooking fail', 'food meme', 'eating funny', 'food reaction']
+    const q = queries[Math.floor(Math.random() * queries.length)]
+    const gifs = await searchGifsMultiple(q, 12)
+    if (gifs.length === 0) return
+    const tabs = gifs.slice(0, 9).map((g, i) => ({
+      id: `${postId}-${i}-${Date.now()}`,
+      url: g.url,
+      x: 10 + Math.random() * 60,
+      y: 15 + Math.random() * 50,
+    }))
+    setVisibleTabsCount(0)
+    setSillyTabs(tabs)
+  }
+
+  useEffect(() => {
+    if (sillyTabs.length === 0 || visibleTabsCount >= sillyTabs.length) return
+    const t = setTimeout(() => setVisibleTabsCount((c) => c + 1), 200)
+    return () => clearTimeout(t)
+  }, [sillyTabs.length, visibleTabsCount])
 
   const handleAddComment = async (postId: string) => {
     const text = commentText[postId]?.trim()
@@ -350,13 +395,16 @@ export function Posts() {
                     className="text-zinc-400 hover:text-zinc-300"
                   >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                      />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                     </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSillyFace(post.id)}
+                    className="text-zinc-400 hover:text-yellow-400 text-xl leading-none"
+                    title="Silly"
+                  >
+                    😜
                   </button>
                 </div>
                 {currentUser && (
@@ -412,8 +460,48 @@ export function Posts() {
                 ) : (
                   <p className="text-sm">
                     <span className="font-semibold text-zinc-100">{post.user.username}</span>
-                    <span className="text-zinc-300 ml-2">{post.caption}</span>
+                    <span className="text-zinc-300 ml-2">
+                      <SeeMoreText text={post.caption} />
+                    </span>
                   </p>
+                )}
+
+                {post.analysisData && (
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setDetailOpenId(detailOpenId === post.id ? null : post.id)}
+                      className="text-xs text-emerald-400 hover:text-emerald-300"
+                    >
+                      {detailOpenId === post.id ? 'Hide detail' : 'View detail'}
+                    </button>
+                    {detailOpenId === post.id && (
+                      <div className="mt-2 p-2 rounded-lg bg-zinc-800/50 text-xs text-zinc-400 space-y-1">
+                        {post.analysisData.type === 'calorie' && (
+                          <>
+                            <p>Calories: {Math.round(post.analysisData.calories ?? 0)}</p>
+                            {post.analysisData.macros?.map((m) => (
+                              <p key={m.label}>{m.label}: {m.value}</p>
+                            ))}
+                          </>
+                        )}
+                        {post.analysisData.type === 'before_after' && (
+                          <>
+                            <p>Before: {Math.round(post.analysisData.caloriesBefore ?? 0)} cal</p>
+                            <p>After: {Math.round(post.analysisData.caloriesAfter ?? 0)} cal</p>
+                            <p className="text-emerald-400">Consumed: {Math.round(post.analysisData.caloriesConsumed ?? 0)} cal</p>
+                            <p className="text-red-400">Waste: {Math.round(post.analysisData.foodWasteCalories ?? 0)} cal</p>
+                            {post.analysisData.macrosBefore?.length ? (
+                              <p className="mt-1">Before macros: {post.analysisData.macrosBefore.map((m) => `${m.label}: ${m.value}`).join(', ')}</p>
+                            ) : null}
+                            {post.analysisData.macrosAfter?.length ? (
+                              <p>After macros: {post.analysisData.macrosAfter.map((m) => `${m.label}: ${m.value}`).join(', ')}</p>
+                            ) : null}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 {commentsOpenId === post.id && (
@@ -421,10 +509,12 @@ export function Posts() {
                     {(comments[post.id] ?? []).map((c) => (
                       <div key={c.id} className="flex gap-2">
                         <img src={c.author_avatar} alt="" className="w-6 h-6 rounded-full flex-shrink-0" />
-                        <div>
+                        <div className="flex-1 min-w-0">
                           <p className="text-sm">
                             <span className="font-semibold text-zinc-200">{c.author_name}</span>
-                            <span className="text-zinc-400 ml-2">{c.text}</span>
+                            <span className="text-zinc-400 ml-2">
+                              <SeeMoreText text={c.text} />
+                            </span>
                           </p>
                         </div>
                       </div>
@@ -442,9 +532,12 @@ export function Posts() {
                         <button
                           type="button"
                           onClick={() => handleAddComment(post.id)}
-                          className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm"
+                          className="p-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500"
+                          title="Submit comment"
                         >
-                          Post
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
                         </button>
                       </div>
                     )}
@@ -455,6 +548,38 @@ export function Posts() {
           </div>
         ))}
       </div>
+
+      {/* Silly GIF error tabs overlay */}
+      {sillyTabs.length > 0 && (
+        <div className="fixed inset-0 z-[100] pointer-events-none">
+          <div className="absolute inset-0 pointer-events-auto" onClick={() => setSillyTabs([])} />
+          {[...sillyTabs.slice(0, visibleTabsCount)].reverse().map((tab, idx) => (
+            <div
+              key={tab.id}
+              className="absolute w-48 rounded-lg overflow-hidden border-2 border-red-500 bg-zinc-900 shadow-xl pointer-events-auto"
+              style={{
+                left: `${tab.x}%`,
+                top: `${tab.y}%`,
+                zIndex: 100 + idx,
+              }}
+            >
+              <div className="flex items-center justify-between px-2 py-1 bg-red-500/20 border-b border-red-500/50">
+                <span className="text-xs font-mono text-red-400">Error 0x{Math.random().toString(16).slice(2, 8)}</span>
+                <button
+                  type="button"
+                  onClick={() => setSillyTabs([])}
+                  className="text-red-400 hover:text-red-300 p-1"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <img src={tab.url} alt="" className="w-full aspect-square object-cover" />
+            </div>
+          ))}
+        </div>
+      )}
 
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

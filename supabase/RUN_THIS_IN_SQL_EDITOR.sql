@@ -104,6 +104,7 @@ create trigger on_auth_user_created after insert on auth.users for each row exec
 -- Posts social features (likes, saves, comments)
 alter table posts add column if not exists likes int default 0;
 alter table posts add column if not exists image_url_after text;
+alter table posts add column if not exists analysis_data jsonb;
 
 create table if not exists post_likes (
   user_id uuid references auth.users(id) on delete cascade,

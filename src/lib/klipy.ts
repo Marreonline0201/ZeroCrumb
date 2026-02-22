@@ -56,3 +56,25 @@ export async function searchGifs(query: string, limit = 1): Promise<KlipySearchR
     dims: gif.dims,
   }
 }
+
+/**
+ * Search for multiple GIFs (for easter egg)
+ */
+export async function searchGifsMultiple(query: string, limit = 10): Promise<KlipySearchResult[]> {
+  const apiKey = getApiKey()
+  if (!apiKey) return []
+
+  const params = new URLSearchParams({ q: query, key: apiKey, limit: String(limit) })
+  const res = await fetch(`${KLIPY_BASE}/v2/search?${params}`)
+  if (!res.ok) return []
+
+  const data = (await res.json()) as {
+    results?: Array<{ media_formats?: { gif?: { url?: string; dims?: [number, number] } } }>
+  }
+  const results: KlipySearchResult[] = []
+  for (const r of data.results ?? []) {
+    const url = r.media_formats?.gif?.url
+    if (url) results.push({ url, dims: r.media_formats?.gif?.dims })
+  }
+  return results
+}

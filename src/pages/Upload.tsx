@@ -5,7 +5,7 @@ import {
   type LogMealNutritionResponse,
   type LogMealNutrient,
 } from '../lib/logmeal'
-import { analyzeFoodWithGemini, type GeminiFoodAnalysis } from '../lib/gemini'
+import { analyzeFoodWithGemini, getMemeCaptionForGif, type GeminiFoodAnalysis } from '../lib/gemini'
 import { saveCalorieAnalysis, saveBeforeAfterAnalysis } from '../lib/analyses'
 import { updateStatsOnMealLog } from '../lib/stats'
 import { checkAndAwardAchievements } from '../lib/achievements'
@@ -95,6 +95,7 @@ export function Upload() {
   } | null>(null)
   const [showMeme, setShowMeme] = useState(false)
   const [memeGifUrl, setMemeGifUrl] = useState<string | null>(null)
+  const [memeCaption, setMemeCaption] = useState<string | null>(null)
   const [memeLoading, setMemeLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const fileBeforeRef = useRef<HTMLInputElement>(null)
@@ -113,6 +114,7 @@ export function Upload() {
     setError(null)
     setShowMeme(false)
     setMemeGifUrl(null)
+    setMemeCaption(null)
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -290,9 +292,13 @@ export function Upload() {
     const searchQuery = typeof foodName === 'string' ? foodName : String(foodName ?? 'food')
     setMemeLoading(true)
     setMemeGifUrl(null)
+    setMemeCaption(null)
     try {
       const gif = await searchGifs(searchQuery, 1)
       setMemeGifUrl(gif?.url ?? null)
+      if (gif?.url && import.meta.env.VITE_GEMINI_API_KEY) {
+        getMemeCaptionForGif(searchQuery, gif.url).then(setMemeCaption).catch(() => setMemeCaption(null))
+      }
     } catch {
       setMemeGifUrl(null)
     } finally {
@@ -305,7 +311,14 @@ export function Upload() {
       setError('Please upload an image first')
       return
     }
-    navigate('/share-post', { state: { imagePreview: preview } })
+    const analysisData = result
+      ? {
+          type: 'calorie' as const,
+          calories: totalCalories,
+          macros: getMacrosFromNutrition(result.data.nutritional_info?.totalNutrients),
+        }
+      : undefined
+    navigate('/share-post', { state: { imagePreview: preview, analysisData } })
   }
 
   const handlePostBeforeAfter = () => {
@@ -313,7 +326,20 @@ export function Upload() {
       setError('Please analyze both images first')
       return
     }
-    navigate('/share-post', { state: { imagePreview: previewBefore, imagePreviewAfter: previewAfter } })
+    const analysisData = resultBeforeAfter
+      ? {
+          type: 'before_after' as const,
+          caloriesBefore,
+          caloriesAfter,
+          caloriesConsumed,
+          foodWasteCalories,
+          macrosBefore: getMacrosFromNutrition(resultBeforeAfter.before.nutritional_info?.totalNutrients),
+          macrosAfter: getMacrosFromNutrition(resultBeforeAfter.after.nutritional_info?.totalNutrients),
+        }
+      : undefined
+    navigate('/share-post', {
+      state: { imagePreview: previewBefore, imagePreviewAfter: previewAfter, analysisData },
+    })
   }
 
   const foodItems = result ? getFoodItemsFromResponse(result.data) : []
@@ -529,17 +555,14 @@ export function Upload() {
                     {memeLoading ? (
                       <p className="text-zinc-500">Loading GIF...</p>
                     ) : memeGifUrl ? (
-                      <img
-                        src={memeGifUrl}
-                        alt="Food GIF"
-                        className="w-full h-full object-contain"
-                      />
+                      <img src={memeGifUrl} alt="Food GIF" className="w-full h-full object-contain" />
                     ) : (
                       <p className="text-zinc-500 text-center px-4">
                         No GIF found. Add VITE_KLIPY_API_KEY to .env (get free key at partner.klipy.com)
                       </p>
                     )}
                   </div>
+                  {memeCaption && <p className="text-sm text-amber-400 mt-2 text-center italic">{memeCaption}</p>}
                 </div>
               )}
             </div>
@@ -737,8 +760,14 @@ export function Upload() {
                 const foodName = getFirstFoodName(resultBeforeAfter.before)
                 setMemeLoading(true)
                 setMemeGifUrl(null)
-                searchGifs(typeof foodName === 'string' ? foodName : String(foodName ?? 'food'), 1)
-                  .then((gif) => setMemeGifUrl(gif?.url ?? null))
+                const q = typeof foodName === 'string' ? foodName : String(foodName ?? 'food')
+                searchGifs(q, 1)
+                  .then((gif) => {
+                    setMemeGifUrl(gif?.url ?? null)
+                    if (gif?.url && import.meta.env.VITE_GEMINI_API_KEY) {
+                      getMemeCaptionForGif(q, gif.url).then(setMemeCaption).catch(() => setMemeCaption(null))
+                    }
+                  })
                   .catch(() => setMemeGifUrl(null))
                   .finally(() => setMemeLoading(false))
               }}
@@ -769,6 +798,7 @@ export function Upload() {
                     </p>
                   )}
                 </div>
+                {memeCaption && <p className="text-sm text-amber-400 mt-2 text-center italic">{memeCaption}</p>}
               </div>
             )}
 

@@ -77,6 +77,38 @@ export async function analyzeFoodWithGemini(imageFile: File): Promise<GeminiFood
 }
 
 /**
+ * Generate a fun caption for a food GIF (for meme display)
+ */
+export async function getMemeCaptionForGif(foodName: string, _gifUrl: string): Promise<string> {
+  const key = getApiKey()
+  if (!key) return ''
+
+  try {
+    const res = await fetch(`${GEMINI_API}?key=${key}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: `Given the food "${foodName}" and that we're showing a related GIF, write ONE short, funny caption (max 15 words) that would go well below the GIF. Be playful and food-related. Reply with ONLY the caption, no quotes.`
+          }],
+        }],
+        generationConfig: {
+          temperature: 0.9,
+          maxOutputTokens: 64,
+        },
+      }),
+    })
+    if (!res.ok) return ''
+    const data = await res.json()
+    const caption = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+    return caption || ''
+  } catch {
+    return ''
+  }
+}
+
+/**
  * Generate a short caption for a food image (for calendar display)
  */
 export async function getFoodImageCaption(imageUrl: string): Promise<string> {

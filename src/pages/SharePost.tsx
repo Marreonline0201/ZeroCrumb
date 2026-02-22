@@ -6,6 +6,19 @@ import { supabase } from '../lib/supabase'
 interface SharePostState {
   imagePreview: string
   imagePreviewAfter?: string
+  analysisData?: {
+    type: 'calorie'
+    calories?: number
+    macros?: Array<{ label: string; value: string }>
+  } | {
+    type: 'before_after'
+    caloriesBefore?: number
+    caloriesAfter?: number
+    caloriesConsumed?: number
+    foodWasteCalories?: number
+    macrosBefore?: Array<{ label: string; value: string }>
+    macrosAfter?: Array<{ label: string; value: string }>
+  }
 }
 
 export function SharePost() {
@@ -81,6 +94,7 @@ export function SharePost() {
           .map((tag) => (tag.startsWith('#') ? tag : `#${tag}`))
           .join(' '),
         created_at: new Date().toISOString(),
+        analysis_data: state.analysisData ?? null,
       })
 
       if (insertError) throw insertError
