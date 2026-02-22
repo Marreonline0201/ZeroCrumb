@@ -9,6 +9,7 @@ import { analyzeFoodWithGemini, type GeminiFoodAnalysis } from '../lib/gemini'
 import { saveCalorieAnalysis, saveBeforeAfterAnalysis } from '../lib/analyses'
 import { updateStatsOnMealLog } from '../lib/stats'
 import { checkAndAwardAchievements } from '../lib/achievements'
+import { searchGifs } from '../lib/klipy'
 import { useAuth } from '../contexts/AuthContext'
 
 const XP_PER_ANALYSIS = 10
@@ -93,6 +94,8 @@ export function Upload() {
     geminiAfter?: GeminiFoodAnalysis
   } | null>(null)
   const [showMeme, setShowMeme] = useState(false)
+  const [memeGifUrl, setMemeGifUrl] = useState<string | null>(null)
+  const [memeLoading, setMemeLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const fileBeforeRef = useRef<HTMLInputElement>(null)
   const fileAfterRef = useRef<HTMLInputElement>(null)
@@ -109,6 +112,7 @@ export function Upload() {
     setResultBeforeAfter(null)
     setError(null)
     setShowMeme(false)
+    setMemeGifUrl(null)
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -275,8 +279,23 @@ export function Upload() {
     }
   }
 
-  const handleMeme = () => {
+  const handleMeme = async () => {
     setShowMeme(true)
+    const foodName =
+      (result && (getFoodItemsFromResponse(result.data)[0]?.name ??
+        (Array.isArray(result.data.foodName) ? result.data.foodName[0] : result.data.foodName))) ??
+      'food'
+    const searchQuery = typeof foodName === 'string' ? foodName : String(foodName)
+    setMemeLoading(true)
+    setMemeGifUrl(null)
+    try {
+      const gif = await searchGifs(searchQuery, 1)
+      setMemeGifUrl(gif?.url ?? null)
+    } catch {
+      setMemeGifUrl(null)
+    } finally {
+      setMemeLoading(false)
+    }
   }
 
   const handlePostOnline = () => {
@@ -495,9 +514,21 @@ export function Upload() {
 
               {showMeme && (
                 <div className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800">
-                  <p className="text-sm text-zinc-500 mb-2">Meme version (placeholder)</p>
-                  <div className="aspect-video bg-zinc-800 rounded-xl flex items-center justify-center text-zinc-500">
-                    Meme generator coming soon
+                  <p className="text-sm text-zinc-500 mb-2">GIF for your food</p>
+                  <div className="aspect-video bg-zinc-800 rounded-xl overflow-hidden flex items-center justify-center">
+                    {memeLoading ? (
+                      <p className="text-zinc-500">Loading GIF...</p>
+                    ) : memeGifUrl ? (
+                      <img
+                        src={memeGifUrl}
+                        alt="Food GIF"
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <p className="text-zinc-500 text-center px-4">
+                        No GIF found. Add VITE_KLIPY_API_KEY to .env (get free key at partner.klipy.com)
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
