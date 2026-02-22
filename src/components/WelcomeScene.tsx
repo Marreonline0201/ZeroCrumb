@@ -64,7 +64,7 @@ export function WelcomeScene({ onComplete }: WelcomeSceneProps) {
     >
       <div className="welcome-content">
         <h2 className="welcome-title">ZeroCrumb</h2>
-        <p className="welcome-subtitle">Your personal companion for sustainable eating</p>
+        <p className="welcome-subtitle">Your Personal Companion for Healthy Eating</p>
         <div className="welcome-animation">
           <div className="floating-elements">
             <div className="floating-element element-1">🥗</div>
@@ -74,7 +74,7 @@ export function WelcomeScene({ onComplete }: WelcomeSceneProps) {
             <div className="floating-element element-5">🥕</div>
           </div>
         </div>
-        <p className="welcome-instruction">Click anywhere or scroll to continue</p>
+        <p className="welcome-instruction">...Loading...</p>
       </div>
     </div>
   )

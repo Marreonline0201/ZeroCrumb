@@ -58,7 +58,7 @@ export function Login() {
       />
       <h1 className="text-2xl font-bold text-center mb-2">Welcome to ZeroCrumb</h1>
       <p className="text-zinc-400 text-center text-sm mb-8 max-w-xs">
-        Track food, reduce waste, and build sustainable habits.
+        Track calories, reduce waste, and build healthy habits.
       </p>
 
       <form onSubmit={handleEmailAuth} className="w-full max-w-sm space-y-4">
