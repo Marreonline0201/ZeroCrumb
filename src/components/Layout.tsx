@@ -4,6 +4,9 @@ import { useAuth } from '../hooks/useAuth'
 
 const navLinks = [
   { to: '/', label: 'Home' },
+  { to: '/history', label: 'History' },
+  { to: '/upload', label: 'Upload' },
+  { to: '/profile', label: 'Profile' },
   { to: '/about', label: 'About Us' },
 ]
 
@@ -25,8 +28,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
             />
           </Link>
 
-          {/* Navigation buttons - Center */}
-          <div className="flex items-center gap-2">
+          {/* Navigation buttons - Center - Hidden on small screens */}
+          <div className="flex items-center gap-2 max-[450px]:hidden">
             <Link
               to="/"
               className="flex flex-col items-center justify-center p-2 rounded-lg hover:bg-zinc-800 transition-colors"
@@ -121,20 +124,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
           : '-translate-y-full md:translate-x-full'
       }`}>
         <div className="px-4 py-6 flex flex-col gap-1 max-h-[60vh] overflow-y-auto md:max-h-none md:py-8">
-          {navLinks.map(({ to, label }) => (
-            <Link
-              key={to}
-              to={to}
-              onClick={() => setMenuOpen(false)}
-              className={`px-4 py-3 rounded-lg font-medium transition-colors touch-manipulation ${
-                location.pathname === to
-                  ? 'bg-emerald-600/30 text-emerald-400'
-                  : 'hover:bg-zinc-800 text-zinc-300'
-              }`}
-            >
-              {label}
-            </Link>
-          ))}
+          {navLinks.map(({ to, label }) => {
+            // On large screens, skip items that are shown in the top nav
+            const isLargeScreen = window.innerWidth >= 450
+            const hideInMenu = isLargeScreen && (to === '/' || to === '/history' || to === '/upload' || to === '/profile')
+            if (hideInMenu) return null
+
+            return (
+              <Link
+                key={to}
+                to={to}
+                onClick={() => setMenuOpen(false)}
+                className={`px-4 py-3 rounded-lg font-medium transition-colors touch-manipulation ${
+                  location.pathname === to
+                    ? 'bg-emerald-600/30 text-emerald-400'
+                    : 'hover:bg-zinc-800 text-zinc-300'
+                }`}
+              >
+                {label}
+              </Link>
+            )
+          })}
           {user && (
             <button
               type="button"

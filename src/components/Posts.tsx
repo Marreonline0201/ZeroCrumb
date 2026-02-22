@@ -143,7 +143,7 @@ export function Posts() {
   }
 
   return (
-    <div className="max-w-md mx-auto pb-6">
+    <div className="max-w-md mx-auto pb-6 px-3">
       {loading && (
         <div className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-400 text-sm">
           Loading posts...
