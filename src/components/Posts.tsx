@@ -97,7 +97,7 @@ export function Posts() {
     setError(null)
     const { data, error: fetchError } = await supabase
       .from('posts')
-      .select('id, user_id, image_url, image_url_after, description, hashtags, created_at, likes')
+      .select('id, user_id, image_url, image_url_after, description, hashtags, created_at, likes, analysis_data')
       .order('created_at', { ascending: false })
 
     if (fetchError) {
@@ -490,13 +490,13 @@ export function Posts() {
                       onClick={() => setDetailOpenId(detailOpenId === post.id ? null : post.id)}
                       className="text-xs text-emerald-400 hover:text-emerald-300"
                     >
-                      {detailOpenId === post.id ? 'Hide detail' : 'View detail'}
+                      {detailOpenId === post.id ? 'Hide calorie detail' : 'See calorie detail'}
                     </button>
                     {detailOpenId === post.id && (
-                      <div className="mt-2 p-2 rounded-lg bg-zinc-800/50 text-xs text-zinc-400 space-y-1">
+                      <div className="mt-2 p-3 rounded-lg bg-zinc-800/50 border border-zinc-700/50 text-xs text-zinc-300 space-y-1">
                         {post.analysisData.type === 'calorie' && (
                           <>
-                            <p>Calories: {Math.round(post.analysisData.calories ?? 0)}</p>
+                            <p className="text-emerald-400 font-medium">Calories: {Math.round(post.analysisData.calories ?? 0)}</p>
                             {post.analysisData.macros?.map((m) => (
                               <p key={m.label}>{m.label}: {m.value}</p>
                             ))}
