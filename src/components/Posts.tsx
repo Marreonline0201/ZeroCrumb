@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { getProfilesByIds } from '../lib/profiles'
@@ -321,13 +322,16 @@ export function Posts() {
             className={`bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800 ${index === 0 ? 'mt-4' : ''}`}
           >
             <div className="flex items-center justify-between p-4">
-              <div className="flex items-center gap-3">
+              <Link
+                to={`/profile/${post.user_id}`}
+                className="flex items-center gap-3 hover:opacity-90 transition-opacity"
+              >
                 <img src={post.user.avatar} alt={post.user.name} className="w-8 h-8 rounded-full" />
                 <div>
                   <h3 className="font-semibold text-zinc-100 text-sm">{post.user.name}</h3>
                   <p className="text-zinc-500 text-xs">{post.timestamp}</p>
                 </div>
-              </div>
+              </Link>
               <div
                 className="relative"
                 ref={(el) => {

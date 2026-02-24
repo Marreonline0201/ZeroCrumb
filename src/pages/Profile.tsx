@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { Link } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { upsertProfile } from '../lib/profiles'
+import { upsertProfile, getProfilesByIds } from '../lib/profiles'
 import { getUserStats, levelFromXp } from '../lib/stats'
 import type { UserStats } from '../lib/stats'
 import { PostDetailModal } from '../components/PostDetailModal'
@@ -20,6 +20,11 @@ type ProfileTab = 'posts' | 'saved'
 
 export function Profile() {
   const { user, updateUser } = useAuth()
+  const { userId: paramUserId } = useParams()
+  const navigate = useNavigate()
+  const viewUserId = paramUserId ?? user?.id
+  const isOwnProfile = user?.id && viewUserId === user.id
+
   const [displayName, setDisplayName] = useState(user?.user_metadata?.full_name ?? '')
   const [description, setDescription] = useState(user?.user_metadata?.description ?? '')
   const [saved, setSaved] = useState(false)
@@ -32,49 +37,80 @@ export function Profile() {
   const [loadingPosts, setLoadingPosts] = useState(true)
   const [profileTab, setProfileTab] = useState<ProfileTab>('posts')
   const [modalPostId, setModalPostId] = useState<string | null>(null)
+  const [profileNotFound, setProfileNotFound] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    const meta = user?.user_metadata
-    if (meta) {
-      setDisplayName(meta.full_name ?? '')
-      setDescription(meta.description ?? '')
-      setAvatarPreview(meta.avatar_url ?? null)
+    if (isOwnProfile) {
+      const meta = user?.user_metadata
+      if (meta) {
+        setDisplayName(meta.full_name ?? '')
+        setDescription(meta.description ?? '')
+        setAvatarPreview(meta.avatar_url ?? null)
+      }
     }
-  }, [user?.user_metadata?.full_name, user?.user_metadata?.description, user?.user_metadata?.avatar_url])
+  }, [isOwnProfile, user?.user_metadata?.full_name, user?.user_metadata?.description, user?.user_metadata?.avatar_url])
 
   useEffect(() => {
-    if (!user?.id) return
-    getUserStats(user.id).then(setStats).catch(() => {})
-    // Sync user_metadata to profiles so posts show correct name/avatar
-    const meta = user.user_metadata
-    if (meta?.full_name || meta?.avatar_url) {
-      upsertProfile(user.id, {
-        full_name: meta.full_name ?? undefined,
-        avatar_url: meta.avatar_url ?? undefined,
-      }).catch(() => {})
-    }
-    
-    const loadPosts = async () => {
-      setLoadingPosts(true)
-      const [postsRes, savesRes] = await Promise.all([
-        supabase.from('posts').select('id, image_url, image_url_after, description, created_at, user_id').eq('user_id', user.id).order('created_at', { ascending: false }),
-        supabase.from('post_saves').select('post_id').eq('user_id', user.id),
-      ])
-      if (!postsRes.error && postsRes.data) {
-        setUserPosts(postsRes.data as Post[])
+    if (!viewUserId) return
+    setProfileNotFound(false)
+
+    const loadProfile = async () => {
+      if (isOwnProfile && user?.id) {
+        getUserStats(user.id).then(setStats).catch(() => {})
+        const meta = user.user_metadata
+        if (meta?.full_name || meta?.avatar_url) {
+          upsertProfile(user.id, {
+            full_name: meta.full_name ?? undefined,
+            avatar_url: meta.avatar_url ?? undefined,
+          }).catch(() => {})
+        }
+      } else {
+        const profilesMap = await getProfilesByIds([viewUserId])
+        const prof = profilesMap[viewUserId]
+        if (prof) {
+          setDisplayName(prof.full_name?.trim() ?? '')
+          setAvatarPreview(prof.avatar_url ?? null)
+        } else {
+          setDisplayName('')
+          setAvatarPreview(null)
+        }
+        getUserStats(viewUserId).then(setStats).catch(() => setStats(null))
       }
-      if (!savesRes.error && savesRes.data?.length) {
-        const ids = savesRes.data.map((r) => r.post_id)
-        const { data: saved } = await supabase.from('posts').select('id, image_url, image_url_after, description, created_at, user_id').in('id', ids).order('created_at', { ascending: false })
-        setSavedPosts((saved ?? []) as Post[])
+
+      setLoadingPosts(true)
+      const postsRes = await supabase
+        .from('posts')
+        .select('id, image_url, image_url_after, description, created_at, user_id')
+        .eq('user_id', viewUserId)
+        .order('created_at', { ascending: false })
+      const postsData = (postsRes.data ?? []) as Post[]
+      setUserPosts(postsData)
+      if (!isOwnProfile && postsData.length === 0) {
+        const profilesMap = await getProfilesByIds([viewUserId])
+        if (!profilesMap[viewUserId]) setProfileNotFound(true)
+      }
+
+      if (isOwnProfile && user?.id) {
+        const savesRes = await supabase.from('post_saves').select('post_id').eq('user_id', user.id)
+        if (!savesRes.error && savesRes.data?.length) {
+          const ids = savesRes.data.map((r) => r.post_id)
+          const { data: savedData } = await supabase
+            .from('posts')
+            .select('id, image_url, image_url_after, description, created_at, user_id')
+            .in('id', ids)
+            .order('created_at', { ascending: false })
+          setSavedPosts((savedData ?? []) as Post[])
+        } else {
+          setSavedPosts([])
+        }
       } else {
         setSavedPosts([])
       }
       setLoadingPosts(false)
     }
-    loadPosts()
-  }, [user?.id])
+    loadProfile()
+  }, [viewUserId, isOwnProfile, user?.id])
 
   const { level, xpInLevel, xpNeededForNext } = stats
     ? levelFromXp(stats.total_xp)
@@ -163,68 +199,101 @@ export function Profile() {
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
   }
 
+  if (!user && !paramUserId) {
+    return null
+  }
+
+  if (profileNotFound) {
+    return (
+      <div className="px-4 py-6 max-w-lg mx-auto">
+        <div className="p-6 rounded-xl bg-zinc-900 border border-zinc-800 text-center">
+          <p className="text-zinc-400 mb-4">User not found</p>
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="px-4 py-2 rounded-lg bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
+          >
+            Go back
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="px-4 py-6 max-w-lg mx-auto">
-      <div className="flex flex-col items-center mb-8">
-        <div 
-          className="w-24 h-24 rounded-full bg-emerald-600/30 flex items-center justify-center mb-4 ring-4 ring-emerald-500/20 cursor-pointer relative overflow-hidden"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          {avatarPreview ? (
-            <img 
-              src={avatarPreview} 
-              alt="Profile" 
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <span className="text-3xl font-bold text-emerald-400">
-              {user?.email?.[0]?.toUpperCase() ?? '?'}
-            </span>
-          )}
-          <div className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-          </div>
-        </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          onChange={handleFileSelect}
-          className="hidden"
-        />
-        <input
-          type="text"
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          placeholder="Display name"
-          className="text-xl font-semibold text-center bg-transparent border-b border-zinc-700 focus:outline-none focus:border-emerald-500 text-zinc-100 placeholder-zinc-500 pb-1"
-        />
-        <p className="text-sm text-zinc-500 mt-1">{user?.email}</p>
-      </div>
-
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-zinc-400 mb-2">About you</label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Tell us about your sustainability goals..."
-            rows={3}
-            className="w-full px-4 py-3 rounded-xl bg-zinc-900 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
-          />
-        </div>
-
+      {!isOwnProfile && (
         <button
           type="button"
-          onClick={handleSave}
-          disabled={loading}
-          className="w-full py-3 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-500 active:scale-[0.98] transition-all touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
+          onClick={() => navigate(-1)}
+          className="mb-4 p-2 rounded-lg hover:bg-zinc-800 text-zinc-400"
         >
-          {loading ? 'Saving...' : saved ? 'Saved!' : 'Update Profile'}
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
         </button>
+      )}
+      <div className="flex flex-col items-center mb-8">
+        <div
+          className={`w-24 h-24 rounded-full bg-emerald-600/30 flex items-center justify-center mb-4 ring-4 ring-emerald-500/20 overflow-hidden ${
+            isOwnProfile ? 'cursor-pointer relative' : ''
+          }`}
+          onClick={isOwnProfile ? () => fileInputRef.current?.click() : undefined}
+        >
+          {avatarPreview ? (
+            <img src={avatarPreview} alt="Profile" className="w-full h-full object-cover" />
+          ) : (
+            <span className="text-3xl font-bold text-emerald-400">
+              {displayName?.[0]?.toUpperCase() ?? user?.email?.[0]?.toUpperCase() ?? '?'}
+            </span>
+          )}
+          {isOwnProfile && (
+            <div className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+            </div>
+          )}
+        </div>
+        <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" />
+        {isOwnProfile ? (
+          <>
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Display name"
+              className="text-xl font-semibold text-center bg-transparent border-b border-zinc-700 focus:outline-none focus:border-emerald-500 text-zinc-100 placeholder-zinc-500 pb-1"
+            />
+            <p className="text-sm text-zinc-500 mt-1">{user?.email}</p>
+          </>
+        ) : (
+          <p className="text-xl font-semibold text-zinc-100">{displayName || 'User'}</p>
+        )}
       </div>
+
+      {isOwnProfile && (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-zinc-400 mb-2">About you</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Tell us about your sustainability goals..."
+              rows={3}
+              className="w-full px-4 py-3 rounded-xl bg-zinc-900 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={loading}
+            className="w-full py-3 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-500 active:scale-[0.98] transition-all touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Saving...' : saved ? 'Saved!' : 'Update Profile'}
+          </button>
+        </div>
+      )}
 
       <div className="mt-8">
         <h2 className="font-semibold text-zinc-300 mb-3">Quick Stats</h2>
@@ -247,17 +316,19 @@ export function Profile() {
         </div>
       </div>
 
-      <Link
-        to="/history"
-        className="mt-6 block p-4 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-emerald-500/50 transition-colors"
-      >
-        <div className="flex items-center justify-between">
-          <span className="font-medium text-zinc-300">View History & Calendar</span>
-          <svg className="w-5 h-5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </div>
-      </Link>
+      {isOwnProfile && (
+        <Link
+          to="/history"
+          className="mt-6 block p-4 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-emerald-500/50 transition-colors"
+        >
+          <div className="flex items-center justify-between">
+            <span className="font-medium text-zinc-300">View History & Calendar</span>
+            <svg className="w-5 h-5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+        </Link>
+      )}
 
       {/* Posts Section */}
       <div className="mt-8">
@@ -267,15 +338,17 @@ export function Profile() {
             onClick={() => setProfileTab('posts')}
             className={`px-4 py-2 rounded-lg font-medium transition-colors ${profileTab === 'posts' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
           >
-            My Posts
+            {isOwnProfile ? 'My Posts' : 'Posts'}
           </button>
-          <button
-            type="button"
-            onClick={() => setProfileTab('saved')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${profileTab === 'saved' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
-          >
-            Saved
-          </button>
+          {isOwnProfile && (
+            <button
+              type="button"
+              onClick={() => setProfileTab('saved')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${profileTab === 'saved' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
+            >
+              Saved
+            </button>
+          )}
         </div>
         {loadingPosts ? (
           <div className="p-4 text-center text-zinc-400 text-sm">Loading...</div>
@@ -315,8 +388,7 @@ export function Profile() {
         <PostDetailModal
           postId={modalPostId}
           isOwnPost={
-            userPosts.some((p) => p.id === modalPostId) ||
-            (savedPosts.find((p) => p.id === modalPostId)?.user_id === user?.id)
+            (userPosts.find((p) => p.id === modalPostId)?.user_id ?? savedPosts.find((p) => p.id === modalPostId)?.user_id) === user?.id
           }
           onClose={() => setModalPostId(null)}
           onDelete={(id) => {

@@ -54,6 +54,7 @@ function AppRoutes() {
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<Home />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/profile/:userId" element={<Profile />} />
         <Route path="/history" element={<History />} />
         <Route path="/upload" element={<Upload />} />
         <Route path="/share-post" element={<SharePost />} />

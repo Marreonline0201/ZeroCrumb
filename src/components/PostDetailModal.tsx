@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { getProfilesByIds } from '../lib/profiles'
@@ -206,13 +207,17 @@ export function PostDetailModal({ postId, isOwnPost, onClose, onDelete, onUpdate
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between p-4 border-b border-zinc-800">
-            <div className="flex items-center gap-3">
+            <Link
+              to={`/profile/${post.user_id}`}
+              onClick={onClose}
+              className="flex items-center gap-3 hover:opacity-90 transition-opacity"
+            >
               <img src={post.user.avatar} alt="" className="w-10 h-10 rounded-full" />
               <div>
                 <p className="font-semibold text-zinc-100">{post.user.name}</p>
                 <p className="text-xs text-zinc-500">{formatTimeAgo(post.created_at)}</p>
               </div>
-            </div>
+            </Link>
             <button
               type="button"
               onClick={onClose}
