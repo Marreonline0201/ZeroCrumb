@@ -397,8 +397,8 @@ export function Upload() {
           <ol className="text-sm text-zinc-500 space-y-2 list-decimal list-inside">
             <li>Choose your analyzer type above</li>
             <li>Upload photo(s) of your food</li>
-            <li>Gemini AI analyzes calories and nutrients (free)</li>
-            <li>Earn XP for every analysis</li>
+            <li>ZeroCrumb analyzes calories and nutrients (free)</li>
+            <li>Earn XP and see your progress for every analysis!</li>
           </ol>
         </div>
 
