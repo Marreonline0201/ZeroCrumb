@@ -23,12 +23,43 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 
 const MACRO_KEYS = ['ENERC_KCAL', 'PROCNT', 'CHOCDF', 'FAT', 'FIBTG', 'SUGAR'] as const
 const MACRO_LABELS: Record<string, string> = {
-  ENERC_KCAL: 'Calories',
+  ENERC_KCAL: 'Energy',
   PROCNT: 'Protein',
   CHOCDF: 'Carbs',
   FAT: 'Fat',
   FIBTG: 'Fiber',
-  SUGAR: 'Sugar',
+  SUGAR: 'Sugars',
+}
+
+/** Split combined item names like "cheeseburger with lettuce, tomato, and cheese" into separate items */
+function splitDetectedItems(items: DetectedItem[]): DetectedItem[] {
+  const result: DetectedItem[] = []
+  for (const item of items) {
+    const name = (item.name ?? '').trim()
+    if (!name) continue
+    if (!/,|\s+and\s+/i.test(name)) {
+      result.push(item)
+      continue
+    }
+    const parts: string[] = []
+    for (const chunk of name.split(/\s+and\s+/i)) {
+      for (const p of chunk.split(/,\s*/)) {
+        const trimmed = p.trim()
+        if (trimmed) {
+          if (/\s+with\s+/i.test(trimmed)) {
+            const [main, ...rest] = trimmed.split(/\s+with\s+/i)
+            if (main?.trim()) parts.push(main.trim())
+            rest.forEach((r) => r.trim() && parts.push(r.trim()))
+          } else {
+            parts.push(trimmed)
+          }
+        }
+      }
+    }
+    const calEach = parts.length > 0 ? Math.round(item.calories / parts.length) : 0
+    parts.forEach((p) => result.push({ name: p, calories: calEach }))
+  }
+  return result
 }
 
 function AnalysisDetail({
@@ -42,7 +73,7 @@ function AnalysisDetail({
   onUpdate: (updated: FoodAnalysis) => void
   onDelete: (id: string) => void
 }) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(true)
   const [editing, setEditing] = useState(false)
   const [caption, setCaption] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -51,7 +82,8 @@ function AnalysisDetail({
 
   const nutritionalData = analysis.nutritional_data as NutritionalData | null
   const macros = nutritionalData?.totalNutrients ?? {}
-  const detectedItems: DetectedItem[] = nutritionalData?.detectedItems ?? []
+  const rawItems: DetectedItem[] = nutritionalData?.detectedItems ?? []
+  const detectedItems = splitDetectedItems(rawItems)
 
   const [captionLoading, setCaptionLoading] = useState(false)
 
@@ -129,9 +161,10 @@ function AnalysisDetail({
           }
         }
       }
+      const filteredItems = editItems.filter((i) => i.name?.trim())
       const nutritionalData: NutritionalData = {
         totalNutrients: Object.keys(newNutrients).length > 0 ? newNutrients : undefined,
-        detectedItems: editItems.length > 0 ? editItems : undefined,
+        detectedItems: filteredItems.length > 0 ? filteredItems : undefined,
       }
       const updated = await updateAnalysis(analysis.id, userId, {
         title: editTitle.trim() || undefined,
@@ -173,12 +206,38 @@ function AnalysisDetail({
     })
   }
 
+  const addItem = () => {
+    setEditItems((prev) => [...prev, { name: '', calories: 0 }])
+  }
+
+  const removeItem = (i: number) => {
+    setEditItems((prev) => prev.filter((_, idx) => idx !== i))
+  }
+
   const updateMacro = (key: string, quantity: number) => {
     setEditMacros((prev) => ({
       ...prev,
-      [key]: { ...prev[key], quantity, unit: prev[key]?.unit ?? 'g', label: prev[key]?.label ?? MACRO_LABELS[key] },
+      [key]: { ...prev[key], quantity, unit: key === 'ENERC_KCAL' ? 'kcal' : 'g', label: prev[key]?.label ?? MACRO_LABELS[key] },
     }))
   }
+
+  const addMacro = (key: string) => {
+    setEditMacros((prev) => ({
+      ...prev,
+      [key]: { quantity: 0, unit: key === 'ENERC_KCAL' ? 'kcal' : 'g', label: MACRO_LABELS[key] },
+    }))
+  }
+
+  const removeMacro = (key: string) => {
+    setEditMacros((prev) => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }
+
+  const activeMacroKeys = MACRO_KEYS.filter((k) => editMacros[k] || macros[k])
+  const availableMacrosToAdd = MACRO_KEYS.filter((k) => !editMacros[k] && !macros[k])
 
   if (editing) {
     return (
@@ -235,55 +294,101 @@ function AnalysisDetail({
             </div>
           </>
         )}
-        {editItems.length > 0 && (
-          <div>
-            <h4 className="text-xs font-medium text-zinc-500 uppercase mb-2">Detected items</h4>
-            <div className="space-y-2">
-              {editItems.map((item, i) => (
-                <div key={i} className="flex gap-2 items-center">
-                  <input
-                    type="text"
-                    value={item.name}
-                    onChange={(e) => updateItem(i, 'name', e.target.value)}
-                    className="flex-1 px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm"
-                  />
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs font-medium text-zinc-500 uppercase">Detected items</h4>
+            <button
+              type="button"
+              onClick={addItem}
+              className="text-xs text-emerald-400 hover:text-emerald-300 font-medium"
+            >
+              + Add item
+            </button>
+          </div>
+          <div className="space-y-2">
+            {editItems.map((item, i) => (
+              <div key={i} className="flex gap-2 items-center">
+                <input
+                  type="text"
+                  value={item.name}
+                  onChange={(e) => updateItem(i, 'name', e.target.value)}
+                  placeholder="Item name"
+                  className="flex-1 px-2 py-1.5 rounded bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm"
+                />
+                <input
+                  type="number"
+                  value={item.calories || ''}
+                  onChange={(e) => updateItem(i, 'calories', Number(e.target.value) || 0)}
+                  placeholder="cal"
+                  className="w-20 px-2 py-1.5 rounded bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm"
+                />
+                <span className="text-zinc-500 text-xs w-6">cal</span>
+                <button
+                  type="button"
+                  onClick={() => removeItem(i)}
+                  className="p-1.5 rounded hover:bg-red-500/20 text-zinc-400 hover:text-red-400"
+                  title="Remove item"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs font-medium text-zinc-500 uppercase">Macronutrients</h4>
+            {availableMacrosToAdd.length > 0 && (
+              <select
+                value=""
+                onChange={(e) => {
+                  const k = e.target.value
+                  if (k) addMacro(k)
+                  e.target.value = ''
+                }}
+                className="text-xs bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300"
+              >
+                <option value="">+ Add macro</option>
+                {availableMacrosToAdd.map((key) => (
+                  <option key={key} value={key}>{MACRO_LABELS[key]}</option>
+                ))}
+              </select>
+            )}
+          </div>
+          <div className="space-y-2">
+            {activeMacroKeys.map((key) => {
+              const label = MACRO_LABELS[key]
+              const val = editMacros[key] ?? macros[key]
+              const qty = val?.quantity ?? 0
+              const unit = key === 'ENERC_KCAL' ? 'kcal' : (val?.unit ?? 'g')
+              return (
+                <div key={key} className="flex items-center gap-2">
+                  <span className="text-zinc-500 text-sm w-20">{label}</span>
                   <input
                     type="number"
-                    value={item.calories}
-                    onChange={(e) => updateItem(i, 'calories', Number(e.target.value) || 0)}
-                    className="w-20 px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm"
+                    step="0.1"
+                    value={qty}
+                    onChange={(e) => updateMacro(key, Number(e.target.value) || 0)}
+                    className="flex-1 px-2 py-1.5 rounded bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm"
                   />
-                  <span className="text-zinc-500 text-xs">cal</span>
+                  <span className="text-zinc-500 text-xs w-8">{unit}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeMacro(key)}
+                    className="p-1.5 rounded hover:bg-red-500/20 text-zinc-400 hover:text-red-400"
+                    title="Remove macro"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
-              ))}
-            </div>
+              )
+            })}
           </div>
-        )}
-        {(MACRO_KEYS.filter((k) => editMacros[k] || macros[k]).length > 0) && (
-          <div>
-            <h4 className="text-xs font-medium text-zinc-500 uppercase mb-2">Macronutrients</h4>
-            <div className="grid grid-cols-2 gap-2">
-              {MACRO_KEYS.map((key) => {
-                const label = MACRO_LABELS[key]
-                const val = editMacros[key] ?? macros[key]
-                const qty = val?.quantity ?? 0
-                return (
-                  <div key={key} className="flex items-center gap-2">
-                    <span className="text-zinc-500 text-sm w-20">{label}</span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={qty}
-                      onChange={(e) => updateMacro(key, Number(e.target.value) || 0)}
-                      className="flex-1 px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm"
-                    />
-                    <span className="text-zinc-500 text-xs">{val?.unit ?? 'g'}</span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
+        </div>
         <div className="flex gap-2">
           <button
             type="button"
@@ -307,25 +412,26 @@ function AnalysisDetail({
 
   return (
     <div className="rounded-xl overflow-hidden bg-zinc-800 border border-zinc-700">
-      <div className="relative">
+      {/* Main food image card with overlay */}
+      <div className="relative aspect-[4/3]">
         <img
           src={analysis.image_url}
           alt="Food"
-          className="w-full aspect-video object-cover"
+          className="w-full h-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-        <div className="absolute bottom-0 left-0 right-0 p-3 flex items-center justify-between gap-3">
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+        <div className="absolute bottom-0 left-0 right-0 p-4 flex items-end justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <p className="font-semibold text-white text-lg drop-shadow-lg line-clamp-2" title={displayTitle}>
+            <p className="font-semibold text-white text-base drop-shadow-lg line-clamp-2" title={displayTitle}>
               {displayTitle}
             </p>
-            <p className="text-emerald-400 font-bold drop-shadow-md">{Math.round(analysis.calories)} cal</p>
+            <p className="text-emerald-400 font-bold text-lg drop-shadow-md mt-0.5">{Math.round(analysis.calories)} cal</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-shrink-0">
             <button
               type="button"
               onClick={handleStartEdit}
-              className="p-2 rounded-lg bg-zinc-700/80 hover:bg-zinc-600 text-zinc-200"
+              className="p-2.5 rounded-full bg-zinc-700/90 hover:bg-zinc-600 text-white"
               title="Edit"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -336,7 +442,7 @@ function AnalysisDetail({
               type="button"
               onClick={handleDelete}
               disabled={deleting}
-              className="p-2 rounded-lg bg-red-500/30 hover:bg-red-500/50 text-red-300 disabled:opacity-50"
+              className="p-2.5 rounded-full bg-red-500/80 hover:bg-red-500 text-white disabled:opacity-50"
               title="Delete"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -347,10 +453,10 @@ function AnalysisDetail({
         </div>
       </div>
 
-      <div className="p-3">
-        {error && <p className="text-sm text-red-400 mb-2">{error}</p>}
+      <div className="p-4">
+        {error && <p className="text-sm text-red-400 mb-3">{error}</p>}
         {analysis.type === 'before_after' && (
-          <div className="flex gap-2 text-sm mb-2">
+          <div className="flex gap-4 text-sm mb-3">
             <span className="text-emerald-400">
               Consumed: {Math.round(analysis.calories_consumed ?? 0)} cal
             </span>
@@ -364,7 +470,7 @@ function AnalysisDetail({
           <button
             type="button"
             onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-2 text-emerald-400 text-sm font-medium hover:underline"
+            className="w-full flex items-center justify-between py-2 text-zinc-400 text-sm font-medium hover:text-zinc-200 transition-colors"
           >
             {expanded ? 'Hide details' : 'View details'}
             <svg
@@ -379,31 +485,30 @@ function AnalysisDetail({
         )}
 
         {expanded && hasDetails && (
-          <div className="mt-3 pt-3 border-t border-zinc-700 space-y-3">
+          <div className="mt-4 pt-4 border-t border-zinc-700 space-y-4">
             {detectedItems.length > 0 && (
               <div>
-                <h4 className="text-xs font-medium text-zinc-500 uppercase mb-1">Detected items</h4>
-                <ul className="space-y-1">
+                <h4 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Detected items</h4>
+                <ul className="space-y-2">
                   {detectedItems.map((item, i) => (
-                    <li key={i} className="flex justify-between text-sm">
+                    <li key={i} className="flex justify-between items-center text-sm">
                       <span className="text-zinc-300">{item.name}</span>
-                      <span className="text-zinc-400">{Math.round(item.calories)} cal</span>
+                      <span className="text-emerald-400 font-medium">{Math.round(item.calories)} cal</span>
                     </li>
                   ))}
                 </ul>
               </div>
             )}
-            {macros && Object.keys(macros).length > 0 && (
+            {(
               <div>
-                <h4 className="text-xs font-medium text-zinc-500 uppercase mb-1">Macronutrients</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  {MACRO_KEYS.filter((k) => macros[k]).map((key) => {
-                    const n = macros[key]
+                <h4 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Macronutrients</h4>
+                <div className="space-y-2">
+                  {MACRO_KEYS.map((key) => {
+                    const n = macros?.[key]
                     const label = n?.label || MACRO_LABELS[key] || key
-                    const value =
-                      n?.quantity != null
-                        ? `${Number(n.quantity).toFixed(1)} ${n?.unit ?? ''}`.trim()
-                        : '-'
+                    const unit = key === 'ENERC_KCAL' ? 'kcal' : (n?.unit ?? 'g')
+                    const qty = n?.quantity != null ? Number(n.quantity) : 0
+                    const value = `${qty.toFixed(1)} ${unit}`.trim()
                     return (
                       <div key={key} className="flex justify-between text-sm">
                         <span className="text-zinc-500">{label}</span>
@@ -665,22 +770,22 @@ export function History() {
 
         {selectedDate && (
           <div className="mt-4 rounded-xl bg-zinc-900 border border-zinc-800 overflow-hidden">
-            {/* Day header with food image as title */}
-            <div className="p-3 border-b border-zinc-800 flex items-center gap-3">
+            {/* Day header: thumbnail, date, entry count */}
+            <div className="p-4 border-b border-zinc-800 flex items-center gap-4">
               {primaryImage ? (
                 <img
                   src={primaryImage}
                   alt="Day"
-                  className="w-14 h-14 object-cover rounded-lg flex-shrink-0"
+                  className="w-16 h-16 object-cover rounded-lg flex-shrink-0"
                 />
               ) : (
-                <div className="w-14 h-14 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0">
+                <div className="w-16 h-16 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0">
                   <span className="text-2xl">📅</span>
                 </div>
               )}
               <div>
-                <h3 className="font-semibold text-zinc-100">{selectedDate}</h3>
-                <p className="text-sm text-zinc-500">
+                <h3 className="font-semibold text-zinc-100 text-lg">{selectedDate}</h3>
+                <p className="text-sm text-zinc-500 mt-0.5">
                   {selectedAnalyses.length} {selectedAnalyses.length === 1 ? 'entry' : 'entries'}
                 </p>
               </div>

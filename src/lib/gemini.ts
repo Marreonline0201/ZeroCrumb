@@ -47,51 +47,22 @@ export async function analyzeFoodWithGemini(imageFile: File): Promise<GeminiFood
         parts: [
           { inlineData: { mimeType, data: base64 } },
           {
-            text: `Analyze this food image. Identify each food item and estimate:
-1. A short caption (3-5 words) for the main dish
-2. Total calories for the whole meal
-3. Each food item with its name and estimated calories
-4. Macros: protein (g), carbs (g), fat (g), fiber (g), sugar (g)
+            text: `Analyze this food photo. You MUST provide:
+1. Total calories
+2. Each food item separately with its calories (e.g. lettuce, chicken, cheese - NOT "burger with lettuce and cheese")
+3. Macronutrients: protein, carbs, fat, fiber, sugar in grams - REQUIRED, estimate from the food even if approximate
 
-Be realistic with portions. Estimate calories based on typical serving sizes.`
+Reply with ONLY this JSON (no other text):
+{"caption":"Burrito bowl","calories":650,"items":[{"name":"lettuce","calories":15},{"name":"guacamole","calories":150},{"name":"chicken","calories":250},{"name":"cheese","calories":110},{"name":"chips","calories":125}],"macros":{"protein":{"value":35,"unit":"g"},"carbs":{"value":45,"unit":"g"},"fat":{"value":28,"unit":"g"},"fiber":{"value":8,"unit":"g"},"sugar":{"value":3,"unit":"g"}}}
+
+The macros object is REQUIRED. Estimate protein/carbs/fat from typical food composition (meat=protein, bread/rice=carbs, cheese/oil=fat). Use 0 only if truly unknown.`
           },
         ],
       }],
       generationConfig: {
-        temperature: 0.2,
+        temperature: 0.1,
         maxOutputTokens: 1024,
         responseMimeType: 'application/json',
-        responseSchema: {
-          type: 'object',
-          properties: {
-            caption: { type: 'string', description: 'Short dish name' },
-            calories: { type: 'number', description: 'Total calories' },
-            items: {
-              type: 'array',
-              description: 'Food items with calories',
-              items: {
-                type: 'object',
-                properties: {
-                  name: { type: 'string' },
-                  calories: { type: 'number' },
-                },
-                required: ['name', 'calories'],
-              },
-            },
-            macros: {
-              type: 'object',
-              description: 'Macronutrients in grams',
-              properties: {
-                protein: { type: 'object', properties: { value: { type: 'number' }, unit: { type: 'string' } } },
-                carbs: { type: 'object', properties: { value: { type: 'number' }, unit: { type: 'string' } } },
-                fat: { type: 'object', properties: { value: { type: 'number' }, unit: { type: 'string' } } },
-                fiber: { type: 'object', properties: { value: { type: 'number' }, unit: { type: 'string' } } },
-                sugar: { type: 'object', properties: { value: { type: 'number' }, unit: { type: 'string' } } },
-              },
-            },
-          },
-          required: ['caption', 'calories', 'items', 'macros'],
-        },
       },
     }),
   })
@@ -116,25 +87,92 @@ Be realistic with portions. Estimate calories based on typical serving sizes.`
   const braceMatch = jsonStr.match(/\{[\s\S]*\}/)
   if (braceMatch) jsonStr = braceMatch[0]
 
-  // Fix trailing commas (invalid in JSON but LLMs often add them)
-  jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1')
+  // Fix common JSON issues from LLM output
+  jsonStr = jsonStr
+    .replace(/,(\s*[}\]])/g, '$1')           // trailing commas
+    .replace(/[\x00-\x1f]/g, '')            // control characters (but keep \n for now)
 
+  let parsed: GeminiFoodAnalysis
   try {
-    const parsed = JSON.parse(jsonStr) as GeminiFoodAnalysis
-    return {
-      caption: parsed.caption ?? 'Food',
-      calories: parsed.calories ?? 0,
-      items: parsed.items ?? [],
-      macros: parsed.macros ?? {},
-    }
+    parsed = JSON.parse(jsonStr) as GeminiFoodAnalysis
   } catch {
-    // Fallback: return minimal valid structure so user can still proceed
-    return {
-      caption: 'Food',
-      calories: 0,
-      items: [],
-      macros: {},
+    // Fallback: extract values with regex when JSON is malformed
+    const calMatch = jsonStr.match(/"calories"\s*:\s*(\d+(?:\.\d+)?)/) ?? jsonStr.match(/calories["']?\s*:\s*(\d+)/)
+    const captionMatch = jsonStr.match(/"caption"\s*:\s*"([^"]*)"/)
+    let calories = calMatch ? Number(calMatch[1]) : 0
+    const caption = (captionMatch?.[1] ?? '').trim() || 'Food'
+    const items: Array<{ name: string; calories: number }> = []
+    const itemRegex = /"name"\s*:\s*"([^"]*)"\s*,\s*"calories"\s*:\s*(\d+(?:\.\d+)?)/g
+    let m
+    while ((m = itemRegex.exec(jsonStr)) !== null) {
+      items.push({ name: (m[1] || 'Food').trim(), calories: Number(m[2]) || 0 })
     }
+    if (items.length === 0 && calories > 0) {
+      items.push({ name: caption, calories })
+    }
+    if (calories === 0 && items.length > 0) {
+      calories = items.reduce((sum, i) => sum + i.calories, 0)
+    }
+    const macros: Record<string, { value: number; unit: string }> = {}
+    const macroPatterns = [
+      ['protein', /"protein"\s*:\s*\{\s*"value"\s*:\s*(\d+(?:\.\d+)?)/i],
+      ['carbs', /"carbs"\s*:\s*\{\s*"value"\s*:\s*(\d+(?:\.\d+)?)/i],
+      ['fat', /"fat"\s*:\s*\{\s*"value"\s*:\s*(\d+(?:\.\d+)?)/i],
+      ['fiber', /"fiber"\s*:\s*\{\s*"value"\s*:\s*(\d+(?:\.\d+)?)/i],
+      ['sugar', /"sugar"\s*:\s*\{\s*"value"\s*:\s*(\d+(?:\.\d+)?)/i],
+    ]
+    for (const [key, re] of macroPatterns) {
+      const match = jsonStr.match(re as RegExp)
+      if (match) macros[key as keyof typeof macros] = { value: Number(match[1]), unit: 'g' }
+    }
+    parsed = { caption, calories, items, macros }
+  }
+
+  const result = {
+    caption: parsed.caption ?? 'Food',
+    calories: parsed.calories ?? 0,
+    items: parsed.items ?? [],
+    macros: parsed.macros ?? {},
+  }
+  if (result.calories === 0 && result.items.length === 0) {
+    throw new Error('Gemini returned no nutrition data. Try analyzing again.')
+  }
+  return result
+}
+
+/** Get numeric value from macro object - supports value, quantity, amount, or plain number */
+function getMacroQty(obj: unknown): number | null {
+  if (obj == null) return null
+  if (typeof obj === 'number' && !Number.isNaN(obj)) return obj
+  if (typeof obj !== 'object') return null
+  const o = obj as Record<string, unknown>
+  const v = o.value ?? o.quantity ?? o.amount
+  if (typeof v === 'number' && !Number.isNaN(v)) return v
+  if (typeof v === 'string') return parseFloat(v) || null
+  return null
+}
+
+/** Find macro value in object with flexible key matching (protein, Protein, PROTEIN, etc.) */
+function findMacro(macros: Record<string, unknown>, ...keys: string[]): number | null {
+  for (const key of keys) {
+    const val = macros[key] ?? macros[key.toLowerCase()]
+    const qty = getMacroQty(val)
+    if (qty != null) return qty
+  }
+  return null
+}
+
+/** Estimate macros from calories using typical distribution: ~20% protein, ~50% carbs, ~30% fat */
+function estimateMacrosFromCalories(cal: number): { protein: number; carbs: number; fat: number; fiber: number; sugar: number } {
+  const pCal = cal * 0.2
+  const cCal = cal * 0.5
+  const fCal = cal * 0.3
+  return {
+    protein: Math.round((pCal / 4) * 10) / 10,
+    carbs: Math.round((cCal / 4) * 10) / 10,
+    fat: Math.round((fCal / 9) * 10) / 10,
+    fiber: Math.round((cal / 500) * 5 * 10) / 10,
+    sugar: Math.round((cal / 500) * 10 * 10) / 10,
   }
 }
 
@@ -160,15 +198,32 @@ export function geminiToLogMealFormat(g: GeminiFoodAnalysis): {
 } {
   const calories = g.calories ?? 0
   const items = g.items ?? []
-  const macros = g.macros ?? {}
+  const macros = (g.macros ?? {}) as Record<string, unknown>
 
   const macroMap: Record<string, { label: string; quantity: number; unit: string }> = {}
   if (calories > 0) macroMap.ENERC_KCAL = { label: 'Calories', quantity: calories, unit: 'kcal' }
-  if (macros.protein?.value != null) macroMap.PROCNT = { label: 'Protein', quantity: macros.protein.value, unit: macros.protein.unit || 'g' }
-  if (macros.carbs?.value != null) macroMap.CHOCDF = { label: 'Carbs', quantity: macros.carbs.value, unit: macros.carbs.unit || 'g' }
-  if (macros.fat?.value != null) macroMap.FAT = { label: 'Fat', quantity: macros.fat.value, unit: macros.fat.unit || 'g' }
-  if (macros.fiber?.value != null) macroMap.FIBTG = { label: 'Fiber', quantity: macros.fiber.value, unit: macros.fiber.unit || 'g' }
-  if (macros.sugar?.value != null) macroMap.SUGAR = { label: 'Sugar', quantity: macros.sugar.value, unit: macros.sugar.unit || 'g' }
+
+  const protein = findMacro(macros, 'protein', 'Protein', 'PROCNT')
+  const carbs = findMacro(macros, 'carbs', 'carbohydrates', 'Carbohydrates', 'CHOCDF')
+  const fat = findMacro(macros, 'fat', 'Fat', 'FAT')
+  const fiber = findMacro(macros, 'fiber', 'Fiber', 'FIBTG')
+  const sugar = findMacro(macros, 'sugar', 'Sugar', 'SUGAR')
+
+  if (protein != null) macroMap.PROCNT = { label: 'Protein', quantity: protein, unit: 'g' }
+  if (carbs != null) macroMap.CHOCDF = { label: 'Carbs', quantity: carbs, unit: 'g' }
+  if (fat != null) macroMap.FAT = { label: 'Fat', quantity: fat, unit: 'g' }
+  if (fiber != null) macroMap.FIBTG = { label: 'Fiber', quantity: fiber, unit: 'g' }
+  if (sugar != null) macroMap.SUGAR = { label: 'Sugar', quantity: sugar, unit: 'g' }
+
+  // If we have calories but no macros from API, estimate them so user sees something useful
+  if (calories > 0 && Object.keys(macroMap).length <= 1) {
+    const est = estimateMacrosFromCalories(calories)
+    if (!macroMap.PROCNT) macroMap.PROCNT = { label: 'Protein', quantity: est.protein, unit: 'g' }
+    if (!macroMap.CHOCDF) macroMap.CHOCDF = { label: 'Carbs', quantity: est.carbs, unit: 'g' }
+    if (!macroMap.FAT) macroMap.FAT = { label: 'Fat', quantity: est.fat, unit: 'g' }
+    if (!macroMap.FIBTG) macroMap.FIBTG = { label: 'Fiber', quantity: est.fiber, unit: 'g' }
+    if (!macroMap.SUGAR) macroMap.SUGAR = { label: 'Sugar', quantity: est.sugar, unit: 'g' }
+  }
 
   const foodNames = items.length > 0 ? items.map((i) => i.name) : [g.caption || 'Food']
   const nutritional_info_per_item = items.map((item, i) => ({

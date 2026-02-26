@@ -496,7 +496,7 @@ export function Upload() {
                 </div>
                 {result.gemini?.calories != null && (
                   <p className="mt-1 text-sm text-zinc-500">
-                    Gemini estimate: {Math.round(result.gemini.calories)} cal
+                    Estimated calories: {Math.round(result.gemini.calories)} cal
                     {result.gemini.caption && ` · ${result.gemini.caption}`}
                   </p>
                 )}

@@ -72,6 +72,10 @@ create policy "Users can insert own stats" on user_stats for insert with check (
 drop policy if exists "Users can update own stats" on user_stats;
 create policy "Users can update own stats" on user_stats for update using (auth.uid() = user_id);
 
+-- Allow anyone to read user_stats (for viewing other users' profiles)
+drop policy if exists "Anyone can read user stats" on user_stats;
+create policy "Anyone can read user stats" on user_stats for select using (true);
+
 create table if not exists user_achievements (
   user_id uuid references auth.users(id) on delete cascade,
   achievement_id text not null,
