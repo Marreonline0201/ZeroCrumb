@@ -3,7 +3,7 @@
  * Add VITE_GEMINI_API_KEY to .env - get key at https://aistudio.google.com/apikey
  */
 
-const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
+const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
 
 function getApiKey(): string | null {
   return import.meta.env.VITE_GEMINI_API_KEY ?? null
@@ -47,20 +47,13 @@ export async function analyzeFoodWithGemini(imageFile: File): Promise<GeminiFood
         parts: [
           { inlineData: { mimeType, data: base64 } },
           {
-            text: `Analyze this food image and estimate nutrition. Respond in JSON only, no markdown:
-{
-  "caption": "Short 3-5 word description of the main food (e.g. Grilled chicken salad)",
-  "calories": estimated total calories (number),
-  "items": [{"name": "food item", "calories": number}],
-  "macros": {
-    "protein": {"value": number, "unit": "g"},
-    "carbs": {"value": number, "unit": "g"},
-    "fat": {"value": number, "unit": "g"},
-    "fiber": {"value": number, "unit": "g"},
-    "sugar": {"value": number, "unit": "g"}
-  }
-}
-Estimate portions realistically. If unsure about fiber/sugar, use 0.`
+            text: `Analyze this food image. Identify each food item and estimate:
+1. A short caption (3-5 words) for the main dish
+2. Total calories for the whole meal
+3. Each food item with its name and estimated calories
+4. Macros: protein (g), carbs (g), fat (g), fiber (g), sugar (g)
+
+Be realistic with portions. Estimate calories based on typical serving sizes.`
           },
         ],
       }],
@@ -68,6 +61,37 @@ Estimate portions realistically. If unsure about fiber/sugar, use 0.`
         temperature: 0.2,
         maxOutputTokens: 1024,
         responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'object',
+          properties: {
+            caption: { type: 'string', description: 'Short dish name' },
+            calories: { type: 'number', description: 'Total calories' },
+            items: {
+              type: 'array',
+              description: 'Food items with calories',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  calories: { type: 'number' },
+                },
+                required: ['name', 'calories'],
+              },
+            },
+            macros: {
+              type: 'object',
+              description: 'Macronutrients in grams',
+              properties: {
+                protein: { type: 'object', properties: { value: { type: 'number' }, unit: { type: 'string' } } },
+                carbs: { type: 'object', properties: { value: { type: 'number' }, unit: { type: 'string' } } },
+                fat: { type: 'object', properties: { value: { type: 'number' }, unit: { type: 'string' } } },
+                fiber: { type: 'object', properties: { value: { type: 'number' }, unit: { type: 'string' } } },
+                sugar: { type: 'object', properties: { value: { type: 'number' }, unit: { type: 'string' } } },
+              },
+            },
+          },
+          required: ['caption', 'calories', 'items', 'macros'],
+        },
       },
     }),
   })
@@ -77,11 +101,41 @@ Estimate portions realistically. If unsure about fiber/sugar, use 0.`
     throw new Error(err.error?.message ?? `Gemini API error: ${res.status}`)
   }
 
-  const data = await res.json()
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text
+  const data = await res.json().catch(() => {
+    throw new Error('Invalid response from Gemini API')
+  })
+  const text = (data.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim()
   if (!text) throw new Error('No response from Gemini')
 
-  return JSON.parse(text) as GeminiFoodAnalysis
+  // Strip markdown code blocks if present
+  let jsonStr = text
+  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+  if (jsonMatch) jsonStr = jsonMatch[1].trim()
+
+  // Extract first { ... } if there's extra text
+  const braceMatch = jsonStr.match(/\{[\s\S]*\}/)
+  if (braceMatch) jsonStr = braceMatch[0]
+
+  // Fix trailing commas (invalid in JSON but LLMs often add them)
+  jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1')
+
+  try {
+    const parsed = JSON.parse(jsonStr) as GeminiFoodAnalysis
+    return {
+      caption: parsed.caption ?? 'Food',
+      calories: parsed.calories ?? 0,
+      items: parsed.items ?? [],
+      macros: parsed.macros ?? {},
+    }
+  } catch {
+    // Fallback: return minimal valid structure so user can still proceed
+    return {
+      caption: 'Food',
+      calories: 0,
+      items: [],
+      macros: {},
+    }
+  }
 }
 
 /**
