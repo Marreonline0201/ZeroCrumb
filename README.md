@@ -48,8 +48,8 @@ A mobile-first SPA for sustainable food tracking, calorie management, and reduci
 
 ## APIs
 
-- **LogMeal** (integrated): Food recognition & nutrition. Add `VITE_LOGMEAL_API_KEY` to `.env`. Get your APIUser token at [logmeal.com](https://logmeal.com). See [docs](https://docs.logmeal.com/docs/guides-getting-started-quickstart).
-- **Meme generator**: Placeholder – add custom or third-party image API
+- **Gemini** (integrated): Food recognition & nutrition (free tier). Add `VITE_GEMINI_API_KEY` to `.env`. Get a free key at [Google AI Studio](https://aistudio.google.com/apikey).
+- **Klipy**: GIF search for meme generator. Add `VITE_KLIPY_API_KEY` to `.env`.
 
 ## Deploy to Render
 
@@ -62,5 +62,5 @@ A mobile-first SPA for sustainable food tracking, calorie management, and reduci
 4. Add environment variables in the Render dashboard:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
-   - `VITE_LOGMEAL_API_KEY`
+   - `VITE_GEMINI_API_KEY`
 5. In Supabase Auth → URL Configuration, add your Render URL (e.g. `https://zerocrumb.onrender.com`) to **Redirect URLs**

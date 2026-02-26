@@ -4,9 +4,8 @@ import {
   analyzeFoodImage,
   type LogMealNutritionResponse,
   type LogMealNutrient,
-} from '../lib/logmeal'
+} from '../lib/foodAnalysis'
 import {
-  analyzeFoodWithGemini,
   getMemeCaptionForGif,
   getDishNameFromItems,
   type GeminiFoodAnalysis,
@@ -152,9 +151,9 @@ export function Upload() {
   const handleAnalyze = async () => {
     if (!file) return
 
-    const apiKey = import.meta.env.VITE_LOGMEAL_API_KEY
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY
     if (!apiKey) {
-      setError('LogMeal API key not configured. Add VITE_LOGMEAL_API_KEY to your .env file.')
+      setError('Gemini API key not configured. Add VITE_GEMINI_API_KEY to your .env file. Get a free key at https://aistudio.google.com/apikey')
       return
     }
 
@@ -163,19 +162,11 @@ export function Upload() {
     setError(null)
 
     try {
-      const data = await analyzeFoodImage(file)
-      let geminiResult: GeminiFoodAnalysis | undefined
-      if (import.meta.env.VITE_GEMINI_API_KEY) {
-        try {
-          geminiResult = await analyzeFoodWithGemini(file)
-        } catch {
-          // Gemini optional - ignore errors
-        }
-      }
+      const { data, caption } = await analyzeFoodImage(file)
       setResult({
         data,
         exp: XP_PER_ANALYSIS,
-        gemini: geminiResult,
+        gemini: caption ? { caption, calories: data.nutritional_info?.calories, items: undefined, macros: undefined } : undefined,
       })
       if (user?.id) {
         try {
@@ -184,7 +175,7 @@ export function Upload() {
           const nutritionalData = data.nutritional_info
             ? { totalNutrients: data.nutritional_info.totalNutrients, detectedItems: foodItems }
             : undefined
-          let title = geminiResult?.caption?.trim()
+          let title = caption?.trim()
           if (!title && foodItems.length > 0 && import.meta.env.VITE_GEMINI_API_KEY) {
             const uniqueNames = [...new Set(foodItems.map((i) => i.name).filter(Boolean))]
             title = (await getDishNameFromItems(uniqueNames)) || undefined
@@ -218,9 +209,9 @@ export function Upload() {
   const handleAnalyzeBeforeAfter = async () => {
     if (!fileBefore || !fileAfter) return
 
-    const apiKey = import.meta.env.VITE_LOGMEAL_API_KEY
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY
     if (!apiKey) {
-      setError('LogMeal API key not configured. Add VITE_LOGMEAL_API_KEY to your .env file.')
+      setError('Gemini API key not configured. Add VITE_GEMINI_API_KEY to your .env file. Get a free key at https://aistudio.google.com/apikey')
       return
     }
 
@@ -229,31 +220,21 @@ export function Upload() {
     setError(null)
 
     try {
-      const [before, after] = await Promise.all([
+      const [beforeRes, afterRes] = await Promise.all([
         analyzeFoodImage(fileBefore),
         analyzeFoodImage(fileAfter),
       ])
+      const before = beforeRes.data
+      const after = afterRes.data
       const caloriesBefore = before.nutritional_info?.calories ?? 0
       const caloriesAfter = after.nutritional_info?.calories ?? 0
       const caloriesConsumed = Math.max(0, caloriesBefore - caloriesAfter)
-      let geminiBefore: GeminiFoodAnalysis | undefined
-      let geminiAfter: GeminiFoodAnalysis | undefined
-      if (import.meta.env.VITE_GEMINI_API_KEY) {
-        try {
-          ;[geminiBefore, geminiAfter] = await Promise.all([
-            analyzeFoodWithGemini(fileBefore),
-            analyzeFoodWithGemini(fileAfter),
-          ])
-        } catch {
-          // Gemini optional
-        }
-      }
       setResultBeforeAfter({
         before,
         after,
         exp: XP_PER_ANALYSIS * 2,
-        geminiBefore,
-        geminiAfter,
+        geminiBefore: beforeRes.caption ? { caption: beforeRes.caption, calories: caloriesBefore } : undefined,
+        geminiAfter: afterRes.caption ? { caption: afterRes.caption, calories: caloriesAfter } : undefined,
       })
       if (user?.id) {
         try {
@@ -261,13 +242,13 @@ export function Upload() {
           const nutritionalData = before.nutritional_info
             ? { totalNutrients: before.nutritional_info.totalNutrients, detectedItems: foodItems }
             : undefined
-          let title = geminiBefore?.caption?.trim()
+          let title = beforeRes.caption?.trim()
           if (!title && foodItems.length > 0 && import.meta.env.VITE_GEMINI_API_KEY) {
             const uniqueNames = [...new Set(foodItems.map((i) => i.name).filter(Boolean))]
             title = (await getDishNameFromItems(uniqueNames)) || undefined
           }
-          if (!title && geminiAfter?.caption?.trim()) {
-            title = geminiAfter.caption.trim()
+          if (!title && afterRes.caption?.trim()) {
+            title = afterRes.caption.trim()
           }
           await saveBeforeAfterAnalysis({
             userId: user.id,
@@ -416,7 +397,7 @@ export function Upload() {
           <ol className="text-sm text-zinc-500 space-y-2 list-decimal list-inside">
             <li>Choose your analyzer type above</li>
             <li>Upload photo(s) of your food</li>
-            <li>LogMeal AI analyzes calories and nutrients</li>
+            <li>Gemini AI analyzes calories and nutrients (free)</li>
             <li>Earn XP for every analysis</li>
           </ol>
         </div>

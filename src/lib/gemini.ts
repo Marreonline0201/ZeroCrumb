@@ -29,7 +29,8 @@ export interface GeminiFoodAnalysis {
 }
 
 /**
- * Analyze a food image with Gemini - returns caption and nutrition estimate
+ * Analyze a food image with Gemini - returns caption and nutrition estimate.
+ * Used as the primary (free) food analyzer, replacing LogMeal.
  */
 export async function analyzeFoodWithGemini(imageFile: File): Promise<GeminiFoodAnalysis> {
   const key = getApiKey()
@@ -46,13 +47,20 @@ export async function analyzeFoodWithGemini(imageFile: File): Promise<GeminiFood
         parts: [
           { inlineData: { mimeType, data: base64 } },
           {
-            text: `Analyze this food image. Respond in JSON only, no markdown:
+            text: `Analyze this food image and estimate nutrition. Respond in JSON only, no markdown:
 {
   "caption": "Short 3-5 word description of the main food (e.g. Grilled chicken salad)",
-  "calories": estimated total calories,
+  "calories": estimated total calories (number),
   "items": [{"name": "food item", "calories": number}],
-  "macros": {"protein": {"value": number, "unit": "g"}, "carbs": {"value": number, "unit": "g"}, "fat": {"value": number, "unit": "g"}}
-}`
+  "macros": {
+    "protein": {"value": number, "unit": "g"},
+    "carbs": {"value": number, "unit": "g"},
+    "fat": {"value": number, "unit": "g"},
+    "fiber": {"value": number, "unit": "g"},
+    "sugar": {"value": number, "unit": "g"}
+  }
+}
+Estimate portions realistically. If unsure about fiber/sugar, use 0.`
           },
         ],
       }],
@@ -74,6 +82,63 @@ export async function analyzeFoodWithGemini(imageFile: File): Promise<GeminiFood
   if (!text) throw new Error('No response from Gemini')
 
   return JSON.parse(text) as GeminiFoodAnalysis
+}
+
+/**
+ * Convert Gemini analysis to LogMeal-compatible format for use across the app
+ */
+export function geminiToLogMealFormat(g: GeminiFoodAnalysis): {
+  imageId: number
+  foodName: string | string[]
+  hasNutritionalInfo: boolean
+  ids: null
+  nutritional_info?: {
+    calories: number
+    totalNutrients: Record<string, { label: string; quantity: number; unit: string }>
+  }
+  nutritional_info_per_item?: Array<{
+    food_item_position: number
+    id: number
+    name?: string
+    hasNutritionalInfo: boolean
+    nutritional_info?: { calories: number; totalNutrients: Record<string, { label: string; quantity: number; unit: string }> }
+  }>
+} {
+  const calories = g.calories ?? 0
+  const items = g.items ?? []
+  const macros = g.macros ?? {}
+
+  const macroMap: Record<string, { label: string; quantity: number; unit: string }> = {}
+  if (calories > 0) macroMap.ENERC_KCAL = { label: 'Calories', quantity: calories, unit: 'kcal' }
+  if (macros.protein?.value != null) macroMap.PROCNT = { label: 'Protein', quantity: macros.protein.value, unit: macros.protein.unit || 'g' }
+  if (macros.carbs?.value != null) macroMap.CHOCDF = { label: 'Carbs', quantity: macros.carbs.value, unit: macros.carbs.unit || 'g' }
+  if (macros.fat?.value != null) macroMap.FAT = { label: 'Fat', quantity: macros.fat.value, unit: macros.fat.unit || 'g' }
+  if (macros.fiber?.value != null) macroMap.FIBTG = { label: 'Fiber', quantity: macros.fiber.value, unit: macros.fiber.unit || 'g' }
+  if (macros.sugar?.value != null) macroMap.SUGAR = { label: 'Sugar', quantity: macros.sugar.value, unit: macros.sugar.unit || 'g' }
+
+  const foodNames = items.length > 0 ? items.map((i) => i.name) : [g.caption || 'Food']
+  const nutritional_info_per_item = items.map((item, i) => ({
+    food_item_position: i + 1,
+    id: i + 1,
+    name: item.name,
+    hasNutritionalInfo: true,
+    nutritional_info: {
+      calories: item.calories,
+      totalNutrients: {} as Record<string, { label: string; quantity: number; unit: string }>,
+    },
+  }))
+
+  return {
+    imageId: 0,
+    foodName: foodNames.length === 1 ? foodNames[0] : foodNames,
+    hasNutritionalInfo: true,
+    ids: null,
+    nutritional_info: {
+      calories,
+      totalNutrients: macroMap,
+    },
+    nutritional_info_per_item: nutritional_info_per_item.length > 0 ? nutritional_info_per_item : undefined,
+  }
 }
 
 /**
